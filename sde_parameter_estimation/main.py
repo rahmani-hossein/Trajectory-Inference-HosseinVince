@@ -81,14 +81,14 @@ if __name__ == "__main__":
 
     # ablation parameter
     ablation_variable_name = 'length of observation (T)'
-    ablation_values = [0.5, 1, 2]  # for T
+    ablation_values = [0.5, 1, 2, 5]  # for T
 
     # By default, we will compare expected value over trajectories, OT, OT with regularization
     methods = ['Trajectory', 'OT', 'OT reg', 'Classical']
     mse_scores = {method: [] for method in methods}
     std_errs = {method: [] for method in methods}
 
-    experiment_name = 'just_a_test'
+    experiment_name = 'just_a_test_1_normalized_OT'
     results_filename = f"results_{experiment_name}.json"
 
     for T in ablation_values:

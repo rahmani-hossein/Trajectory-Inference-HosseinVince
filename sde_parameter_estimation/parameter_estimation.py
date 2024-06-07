@@ -6,12 +6,12 @@ def extract_marginal_samples(trajectories):
     Extract marginal distributions from a 3D trajectory array.
 
     Parameters:
-        trajectories (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, num_dimensions).
+        trajectories (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
 
     Returns:
         list of numpy.ndarray: Each element is an array containing samples from the marginal distribution at each time step.
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
+    num_trajectories, num_steps, d = trajectories.shape
     marginals = []
 
     for t in range(num_steps):
@@ -60,7 +60,7 @@ def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0,
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
-    :param X: 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, num_dimensions)
+    :param X: 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d)
     :param dt: the time granularity of the observed time series, assumed to be equal
     :param expectation: boolean for whether to use expected values in the estimator
     :param OT:boolean for whether to use optimal transport to estimate the expected values
@@ -83,7 +83,7 @@ def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0,
         A = estimate_A(X, dt, GGT = GGT)
     return A
 
-def estimate_A_exp_ot(marginals, dt, entropy_reg = 0.01):
+def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01):
     """
     Estimate the drift matrix A using optimal transport between successive marginal distributions.
 
@@ -94,19 +94,20 @@ def estimate_A_exp_ot(marginals, dt, entropy_reg = 0.01):
     Returns:
         numpy.ndarray: Estimated drift matrix A
     """
-    num_time_steps = len(marginals)
-    num_dimensions = marginals[0].shape[1]
+    num_time_steps = len(marginal_samples)
+    d = marginal_samples[0].shape[1]
 
-    sum_Edxt_xtT = np.zeros((num_dimensions, num_dimensions))
-    sum_Ext_xtT = np.zeros((num_dimensions, num_dimensions))
+    sum_Edxt_xtT = np.zeros((d, d))
+    sum_Ext_xtT = np.zeros((d, d))
 
     for t in range(num_time_steps - 1):
         # extract the samples of the process, taken from time t and t+1
-        X_t = marginals[t]
-        X_t1 = marginals[t + 1]
-
+        X_t = marginal_samples[t]
+        X_t1 = marginal_samples[t + 1]
+        # print('X_t shape:', X_t.shape)
         # Calculate the cost matrix (Euclidean distance squared between each pair)
         M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+
         # Solve optimal transport problem
         if entropy_reg > 0:
             # Compute the entropy-regularized OT plan using the Sinkhorn algorithm.
@@ -114,10 +115,15 @@ def estimate_A_exp_ot(marginals, dt, entropy_reg = 0.01):
             p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M/M.max(), reg=entropy_reg)
         else:
             p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
+        #
+        # print('optimal transport plan dimensions:', p.shape)
+        # print('plan:', p)
 
         # Use optimal transport distribution to estimate required terms
         sum_Edxt_xtT += (X_t1.T @ p @ X_t - X_t.T @ p @ X_t) / len(X_t)
-        sum_Ext_xtT += (X_t.T @ p @ X_t) / len(X_t) #(X_t.T @ np.eye(len(X_t)) @ X_t) / (len(X_t)**2) # (X_t.T @ p @ X_t) / len(X_t)
+        sum_Ext_xtT += (X_t.T @ p @ X_t) / len(X_t)
+        #(X_t.T @ np.eye(len(X_t)) @ X_t)  / len(X_t))
+        #(X_t.T @ p @ X_t) / len(X_t) #(X_t.T @ np.eye(len(X_t)) @ X_t) / (len(X_t)**2) # (X_t.T @ p @ X_t) / len(X_t)
 
     # Compute A_hat using the estimated expectations
     return np.matmul(sum_Edxt_xtT, np.linalg.pinv(sum_Ext_xtT)) * (1 / dt)
@@ -127,21 +133,21 @@ def estimate_A(trajectories, dt, GGT = None):
     Calculate the closed form estimator A_hat using observed data from multiple trajectories.
 
     Parameters:
-        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, num_dimensions).
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
         dt (float): Discretization time step.
         GGT (optional): the Gram matrix of the diffusion matrix
 
     Returns:
         numpy.ndarray: Estimated drift matrix A given the set of trajectories
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
-    A_hat = np.zeros((num_dimensions, num_dimensions))
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
     if GGT is None:
-        GGT = np.eye(num_dimensions)
+        GGT = np.eye(d)
     for trajectory in trajectories:
         # perform the estimate
-        sum_xt_dxt = np.zeros((num_dimensions, num_dimensions))
-        sum_xt_xtT = np.zeros((num_dimensions, num_dimensions))
+        sum_xt_dxt = np.zeros((d, d))
+        sum_xt_xtT = np.zeros((d, d))
         for t in range(num_steps-1):
             xt = trajectory[t]
             xt_next = trajectory[t + 1]
@@ -166,26 +172,26 @@ def estimate_A_exp(trajectories, dt, GGT = None):
     Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
 
     Parameters:
-        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, num_dimensions).
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
         dt (float): Discretization time step.
         GGT (optional): the Gram matrix of the diffusion matrix
 
     Returns:
         numpy.ndarray: Estimated drift matrix A given the set of trajectories
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
-    A_hat = np.zeros((num_dimensions, num_dimensions))
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
 
     if GGT is None:
-        GGT = np.eye(num_dimensions)  # Use identity if no GGT provided
+        GGT = np.eye(d)  # Use identity if no GGT provided
 
     # Initialize cumulative sums
-    sum_Edxt_Ext = np.zeros((num_dimensions, num_dimensions))
-    sum_Ext_ExtT = np.zeros((num_dimensions, num_dimensions))
+    sum_Edxt_Ext = np.zeros((d, d))
+    sum_Ext_ExtT = np.zeros((d, d))
 
     for t in range(num_steps - 1):
-        sum_dxt_xt = np.zeros((num_dimensions, num_dimensions))
-        sum_xt_xt = np.zeros((num_dimensions, num_dimensions))
+        sum_dxt_xt = np.zeros((d, d))
+        sum_xt_xt = np.zeros((d, d))
         for trajectory in trajectories:
             sum_dxt_xt += np.outer(trajectory[t+1] - trajectory[t], trajectory[t])
             sum_xt_xt += np.outer(trajectory[t], trajectory[t])
@@ -205,18 +211,18 @@ def estimate_GGT(trajectories, T):
     Returns:
         numpy.ndarray: Estimated GG^T matrix.
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
+    num_trajectories, num_steps, d = trajectories.shape
 
     # Initialize the GG^T matrix
-    GGT = np.zeros((num_dimensions, num_dimensions))
+    GGT = np.zeros((d, d))
 
     # Compute increments ΔX for each trajectory
     increments = np.diff(trajectories, axis=1)
 
 
     # Sum up the products of increments for each dimension pair across all trajectories and steps
-    for i in range(num_dimensions):
-        for j in range(num_dimensions):
+    for i in range(d):
+        for j in range(d):
             GGT[i, j] = np.sum(increments[:, :, i] * increments[:, :, j])
 
     # Divide by total time T*num_trajectories to normalize
@@ -231,30 +237,30 @@ def estimate_A_exp_alt(trajectories, dt, GGT = None):
     Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
 
     Parameters:
-        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, num_dimensions).
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
         dt (float): Discretization time step.
         GGT (optional): the Gram matrix of the diffusion matrix
 
     Returns:
         numpy.ndarray: Estimated drift matrix A given the set of trajectories
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
-    A_hat = np.zeros((num_dimensions, num_dimensions))
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
 
     if GGT is None:
-        GGT = np.eye(num_dimensions)  # Use identity if no GGT provided
+        GGT = np.eye(d)  # Use identity if no GGT provided
 
     # Initialize cumulative sums
-    sum_Edxt_Ext = np.zeros((num_dimensions, num_dimensions))
-    sum_Ext_ExtT = np.zeros((num_dimensions, num_dimensions))
+    sum_Edxt_Ext = np.zeros((d, d))
+    sum_Ext_ExtT = np.zeros((d, d))
 
     for t in range(num_steps - 1):
-        sum_dxt_xt = np.zeros((num_dimensions, num_dimensions))
-        sum_xt = np.zeros((num_dimensions, 1))
-        sum_xtT = np.zeros((1, num_dimensions))
+        sum_dxt_xt = np.zeros((d, d))
+        sum_xt = np.zeros((d, 1))
+        sum_xtT = np.zeros((1, d))
         for trajectory in trajectories:
             sum_dxt_xt += np.outer(trajectory[t+1] - trajectory[t], trajectory[t])
-            sum_xt += np.reshape(trajectory[t], (num_dimensions, 1))
+            sum_xt += np.reshape(trajectory[t], (d, 1))
             sum_xtT += np.transpose(trajectory[t])
         Ext = sum_xt /num_trajectories
         ExtT = sum_xtT / num_trajectories
@@ -264,7 +270,7 @@ def estimate_A_exp_alt(trajectories, dt, GGT = None):
 
 def estimate_A_1D(trajectories, dt):
     A_hat = 0
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
+    num_trajectories, num_steps, d = trajectories.shape
     for trajectory in trajectories:
         # perform the estimate
         sum_xt_dxt = 0
@@ -290,16 +296,16 @@ def estimate_A_(trajectories, dt, G):
     Calculate the closed form estimator A_hat using discrete observed data from multiple trajectories.
 
     Parameters:
-        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, num_dimensions).
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
         dt (float): Discretization time step.
 
     Returns:
         numpy.ndarray: Estimated drift matrix A given the set of trajectories
     """
-    num_trajectories, num_steps, num_dimensions = trajectories.shape
-    A_hat = np.zeros((num_dimensions, num_dimensions))
-    sum_xt_dxt = np.zeros((num_dimensions, num_dimensions))
-    sum_xt_xtT = np.zeros((num_dimensions, num_dimensions))
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
+    sum_xt_dxt = np.zeros((d, d))
+    sum_xt_xtT = np.zeros((d, d))
 
     for trajectory in trajectories:
         # perform the estimate
