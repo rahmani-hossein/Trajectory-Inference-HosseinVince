@@ -1,5 +1,5 @@
 import numpy as np
-
+from plots import *
 def initialize_drift(d, initialization_type = 'uniform_random_entries', high= 1, low = -1, magnitude = 1, sparsity = None):
     if initialization_type == 'uniform_random_entries':
         A = generate_random_matrix(d, high = high, low = low)
@@ -38,22 +38,40 @@ def initialize_diffusion(d, initialization_type = 'scaled_identity', diffusion_s
 #
 #     return
 
-def ou_step(X_prev, dt, A, G):
-    """
-    Perform a single step simulation of an Ornstein-Uhlenbeck process.
-
-    Parameters:
-        X_prev (numpy.ndarray): Previous state of the process.
-        dt (float): Time step size.
+def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=None):
+    '''
+    Models measurements of cell trajectories, such that cells die when measured
+    Cell trajectories are modeled by taking samples of the discretized SDE with time granularity dt_EM
+    We assume that exactly num_trajectories cells are measured at each measured time, which are equally
+    spaced according to time granularity dt (dt >= dt_EM)
+    To efficiently simulate the measurements, we generate num_trajectories cell trajectories up until each
+    time point dt*i
+    Args:
+        num_trajectories: number of trajectories
+        d: dimension of process
+        T: Total time period
+        dt_EM: discretization time step used for simulating the raw cell trajectories
+        dt: discretization time step of the measurements
         A (numpy.ndarray): Drift matrix.
         G (numpy.ndarray): Variance matrix.
+        X0 (numpy.ndarray): Initial value.
 
     Returns:
-        numpy.ndarray: Next state of the process.
-    """
-    d = len(X_prev)
-    dW = np.random.normal(scale=np.sqrt(dt), size=d)
-    return X_prev + A @ X_prev * dt + np.sqrt(G) @ dW
+    X_measured
+
+    '''
+    n_measured_times = int(T / dt)
+    X_measured = np.zeros((num_trajectories, n_measured_times, d))
+
+    for i in range(n_measured_times):
+        for n in range(num_trajectories):
+            if i == 0:
+                X_measured[n, 0, :] = X0
+            else:
+                measured_T = i * dt
+                # cell trajectory terminating at i*dt
+                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0)[-1]
+    return X_measured
 
 def multiple_ou_trajectories_cell_branching(num_trajectories, d, T, dt, A, G, init_population, pd=0.5, tau=0.02, X0=None):
     num_steps = int(T / dt)
@@ -117,6 +135,24 @@ def ou_process(T, dt, A, G, X0):
 
     return X
 
+
+def ou_step(X_prev, dt, A, G):
+    """
+    Perform a single step simulation of an Ornstein-Uhlenbeck process.
+
+    Parameters:
+        X_prev (numpy.ndarray): Previous state of the process.
+        dt (float): Time step size.
+        A (numpy.ndarray): Drift matrix.
+        G (numpy.ndarray): Variance matrix.
+
+    Returns:
+        numpy.ndarray: Next state of the process.
+    """
+    d = len(X_prev)
+    dW = np.random.normal(scale=np.sqrt(dt), size=d)
+    return X_prev + A @ X_prev * dt + np.sqrt(G) @ dW
+
 def multiple_ou_trajectories_cell(num_trajectories, d, T, dt, A, G, init_population, X0=None):
     num_steps = int(T / dt)
     all_trajectories = np.zeros((num_trajectories, num_steps, d))
@@ -128,6 +164,8 @@ def multiple_ou_trajectories_cell(num_trajectories, d, T, dt, A, G, init_populat
     # Sample trajectories at each time step
     for step in range(num_steps):
         # print('current population:', len(population_trajectories))
+
+
         if len(population_trajectories) < num_trajectories:
             raise ValueError("Not enough remaining population to sample the required number of trajectories.")
 

@@ -12,14 +12,14 @@ def extract_marginal_samples(trajectories):
         list of numpy.ndarray: Each element is an array containing samples from the marginal distribution at each time step.
     """
     num_trajectories, num_steps, d = trajectories.shape
-    marginals = []
+    marginal_samples = []
 
     for t in range(num_steps):
         # Extract all samples at time t from each trajectory
-        marginal_at_t = trajectories[:, t, :]
-        marginals.append(marginal_at_t)
+        samples_at_t = trajectories[:, t, :]
+        marginal_samples.append(samples_at_t)
 
-    return marginals
+    return marginal_samples
 # def estimate_A_compare_methods(X, dt, entropy_reg = 0):
 #     A_hat_traj = estimate_linear_drift(X, dt, expectation = True, OT = False, entropy_reg = 0, GGT = None)
 #     A_hat_OT = estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0, GGT = None)
@@ -96,6 +96,7 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01):
     """
     num_time_steps = len(marginal_samples)
     d = marginal_samples[0].shape[1]
+    num_trajectories = marginal_samples[0].shape[0]
 
     sum_Edxt_xtT = np.zeros((d, d))
     sum_Ext_xtT = np.zeros((d, d))
@@ -118,10 +119,11 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01):
         #
         # print('optimal transport plan dimensions:', p.shape)
         # print('plan:', p)
-
         # Use optimal transport distribution to estimate required terms
-        sum_Edxt_xtT += (X_t1.T @ p @ X_t - X_t.T @ p @ X_t) / len(X_t)
-        sum_Ext_xtT += (X_t.T @ p @ X_t) / len(X_t)
+        sum_Edxt_xtT += (X_t1.T @ p @ X_t - X_t.T @ p @ X_t)
+        term = sum(np.outer(X_t[i], X_t[i]) for i in range(num_trajectories))/num_trajectories
+        sum_Ext_xtT += term
+        #(X_t.T @ np.eye(len(X_t)) @ X_t)  / len(X_t)
         #(X_t.T @ np.eye(len(X_t)) @ X_t)  / len(X_t))
         #(X_t.T @ p @ X_t) / len(X_t) #(X_t.T @ np.eye(len(X_t)) @ X_t) / (len(X_t)**2) # (X_t.T @ p @ X_t) / len(X_t)
 

@@ -63,7 +63,7 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
 if __name__ == "__main__":
 
     # Variables for SDEs
-    d = 10
+    d = 2
     dt_EM = 0.001
     drift_initialization = 'negative_eigenvalue'
     diffusion_initialization = 'scaled_identity'
@@ -80,28 +80,29 @@ if __name__ == "__main__":
     entropy_reg = 0.01
 
     # ablation parameter
-    ablation_variable_name = 'length of observation (T)'
-    ablation_values = [0.5, 1, 2, 5]  # for T
+    ablation_variable_name = 'number of trajectories'
+    ablation_values = [10, 50, 100, 500]
 
     # By default, we will compare expected value over trajectories, OT, OT with regularization
-    methods = ['Trajectory', 'OT', 'OT reg', 'Classical']
+    methods = ['OT', 'OT reg']
     mse_scores = {method: [] for method in methods}
     std_errs = {method: [] for method in methods}
 
-    experiment_name = 'just_a_test_1_normalized_OT'
+    experiment_name = 'just_a_test_exp_formula_change'
     results_filename = f"results_{experiment_name}.json"
 
-    for T in ablation_values:
+    for num_trajectories in ablation_values:
         # Temporary storage for the current ablation value
         temp_mse_scores = {method: [] for method in methods}
 
         for i in tqdm(range(n_sdes)):
             A = initialize_drift(d, initialization_type=drift_initialization)
             G = initialize_diffusion(d, initialization_type=diffusion_initialization, diffusion_scale=diffusion_scale)
-            X = multiple_ou_trajectories(num_trajectories, d, T, dt_EM, A, G, X0=fixed_X0)
-            # subsample to simulate the measured process
-            step_ratio = int(dt / dt_EM)
-            X_measured = X[:, ::step_ratio, :]
+            # X = multiple_ou_trajectories(num_trajectories, d, T, dt_EM, A, G, X0=fixed_X0)
+            # # subsample to simulate the measured process
+            # step_ratio = int(dt / dt_EM)
+            # X_measured = X[:, ::step_ratio, :]
+            X_measured = multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=fixed_X0)
             A_estimations = estimate_A_compare_methods(X_measured, dt, entropy_reg, methods)
             for method, A_hat in A_estimations.items():
                 temp_mse_scores[method].append(np.mean((A_hat - A) ** 2))
@@ -110,14 +111,13 @@ if __name__ == "__main__":
             # temp_mse_scores['Trajectory'].append(np.mean((A_hat_traj - A) ** 2))
             # temp_mse_scores['OT'].append(np.mean((A_hat_OT - A) ** 2))
             # temp_mse_scores['OT reg'].append(np.mean((A_hat_OT_reg - A) ** 2))
-
         # Compute mean MSEs and standard errors for the current ablation value
         for method in methods:
             mean_mse = np.mean(temp_mse_scores[method])
             std_error = np.std(temp_mse_scores[method]) / np.sqrt(n_sdes)
             mse_scores[method].append(mean_mse)
             std_errs[method].append(std_error)
-            print(f'Mean MSE ({method}) for {ablation_variable_name} = {T}: {mean_mse}, Standard Error: {std_error}')
+            print(f'Mean MSE ({method}) for {ablation_variable_name} = {num_trajectories}: {mean_mse}, Standard Error: {std_error}')
 
     # Save experimental variables and results
     variables = {
