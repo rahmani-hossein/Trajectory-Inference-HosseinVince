@@ -5,6 +5,42 @@ import os
 matplotlib.use('TkAgg')  # Use TkAgg backend for interactive display
 import matplotlib.pyplot as plt
 
+
+def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_errs, list_method_labels, d,
+             experiment_name, save_plot = True):
+    """
+    Plot and save Mean Squared Error (MSE) results.
+
+    Parameters:
+    - ablation_values: List of values for the ablation variable.
+    - ablation_variable_name: Name of the ablation variable (string).
+    - list_mse_scores: List of lists containing MSE scores for each method.
+    - list_std_errs: List of lists containing standard errors for each method.
+    - list_method_labels: List of method names corresponding to the MSE scores.
+    - d: Number of dimensions for the experiment.
+    - experiment_name: Name of the experiment (string).
+    - save_plot: Boolean indicating whether to save the plot or not. Defaults to True.
+    """
+    fmt_list = ['-^', '-o', '--', '-s', '-d', '-x', '-*']
+    for method_name, mse_score, std_err, fmt in zip(list_method_labels, list_mse_scores, list_std_errs, fmt_list):
+        plt.errorbar(ablation_values, mse_score, yerr=std_err, fmt=fmt, label=method_name)
+    plt.xlabel(ablation_variable_name)
+    plt.ylabel('Mean Squared Error (MSE)')
+    plt.title(f'Parameter Estimation on {d}-dimensional Stationary Linear Additive Noise SDE')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    # Save the plot
+    if save_plot:
+        os.makedirs('MSE_plots', exist_ok=True)
+        plot_filename = f"mse_plot_{experiment_name}.png"
+        filepath = os.path.join('MSE_plots', plot_filename)
+        plt.savefig(filepath)
+
+    # Show plot
+    plt.show()
+
 def plot_trajectories(X, T, dt, save_file = False):
     """
     Plot the trajectories of a multidimensional process.

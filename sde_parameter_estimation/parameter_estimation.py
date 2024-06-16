@@ -1,5 +1,6 @@
 import numpy as np
 import ot
+from scipy.linalg import expm
 
 def extract_marginal_samples(trajectories):
     """
@@ -26,7 +27,7 @@ def extract_marginal_samples(trajectories):
 #     A_hat_OT_reg = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg, GGT=None)
 #     return  A_hat_traj, A_hat_OT, A_hat_OT_reg
 
-def estimate_A_compare_methods(X, dt, entropy_reg, methods):
+def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations = 1):
     """
     Estimate A using various methods.
 
@@ -46,9 +47,9 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods):
         if method == 'Trajectory':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=False, entropy_reg=0, GGT=None)
         elif method == 'OT':
-            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None)
+            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=n_iterations)
         elif method == 'OT reg':
-            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg, GGT=None)
+            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg, GGT=None, n_iterations=n_iterations)
         elif method == 'Classical':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation = False, GGT = None)
         else:
@@ -56,7 +57,7 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods):
 
     return A_estimations
 
-def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0, GGT = None):
+def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0, GGT = None, n_iterations = 1):
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
@@ -73,8 +74,16 @@ def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0,
         if OT is True:
             # extract the marginal samples first
             marginals = extract_marginal_samples(X)
+            its = 1
+            # initial estimate for A
             # the expectations are estimated using conditional densities from OT
-            A = estimate_A_exp_ot(marginals, dt, entropy_reg = entropy_reg)
+            A_0 = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None)
+            A = A_0
+            # print(f'estimated A for iteration 1:', A)
+            while its < n_iterations:
+                A = estimate_A_exp_ot(marginals, dt, entropy_reg = entropy_reg, cur_est_A = A)
+                its += 1
+                # print(f'estimated A for iteration {its}:', A)
         else:
             # the expectations are taken over the set of all observed trajectories
             A = estimate_A_exp(X, dt)
@@ -83,7 +92,7 @@ def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0,
         A = estimate_A(X, dt, GGT = GGT)
     return A
 
-def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01):
+def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01, cur_est_A = None):
     """
     Estimate the drift matrix A using optimal transport between successive marginal distributions.
 
@@ -105,9 +114,24 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01):
         # extract the samples of the process, taken from time t and t+1
         X_t = marginal_samples[t]
         X_t1 = marginal_samples[t + 1]
-        # print('X_t shape:', X_t.shape)
-        # Calculate the cost matrix (Euclidean distance squared between each pair)
-        M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+        # Calculate the cost matrix
+        if cur_est_A is None:
+            # optimize over empirical marginal transition
+            M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+        else:
+            # optimize over empirical marginal transition given current estimated A
+            # delta_Xt = np.zeros_like(X_t)
+            # # Iterate over each trajectory
+            # for i in range(num_trajectories):
+            #
+            #     delta_Xt[i, :] = np.dot(cur_est_A, X_t[i, :])*dt
+            # delta_Xt = X_t @ expm(cur_est_A * dt)
+            # Compute the cost matrix with the correctly aligned dimensions
+            # delta_Xt = np.dot(X_t, cur_est_A.T) * dt
+            # M = ot.dist(np.dot(X_t, cur_est_A.T) * dt, X_t1-X_t, metric='sqeuclidean')
+            # M = ot.dist(X_t + np.dot(X_t, cur_est_A.T) * dt, X_t1, metric='sqeuclidean')
+            M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
+
 
         # Solve optimal transport problem
         if entropy_reg > 0:

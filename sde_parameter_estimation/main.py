@@ -1,63 +1,91 @@
-from plots import *
-from parameter_estimation import *
-from simulate_trajectories import *
-import json
-import os
+import numpy as np
 from tqdm import tqdm
+from simulate_trajectories import *
+from parameter_estimation import estimate_A_compare_methods
+import utils
+import plots
+import argparse
 
+# def main(args):
+#
+#     # set up parameters for SDE simulation
+#     d = int(args.d)
+#     dt_EM = float(args.dt_em)
+#     n_sdes = int(args.n_sdes)
+#     T = float(args.T)
+#     drift_initialization = args.drift_initialization
+#     diffusion_initialization = args.diffusion_initialization
+#     diffusion_scale = float(args.diffusion_scale)
+#     if args.fixed_X0 is None:
+#         fixed_X0 = None
+#     else:
+#         if args.fixed_X0 == 'ones':
+#             fixed_X0 = np.ones(d)
+#         else:
+#             fixed_X0 = np.zeros(d)
+#     # set up parameters for SDE measurement
+#     dt = float(args.dt)
+#     num_trajectories = int(args.num_trajectories)
+#
+#
+#
+#     entropy_reg = float(args.entropy_reg)
+#
+#     ablation_values = [int(item) for item in args.ablation_values.split(',')]
+#
+#     ablation_values = [1, 2, 3, 4, 5]  # Example for number of iterations
+#
+#     methods = ['OT', 'OT reg']
+#
+#     mse_scores = {method: [] for method in methods}
+#     std_errs = {method: [] for method in methods}
+#
+#     experiment_name = f'{d}D_{ablation_variable_name}_experiment'
+#     results_filename = f"results_{experiment_name}.json"
+#
+#
+#     for n_iterations in ablation_values:
+#         temp_mse_scores = {method: [] for method in methods}
+#         for _ in tqdm(range(n_sdes)):
+#             A = utils.initialize_drift(d, drift_initialization)
+#             G = utils.initialize_diffusion(d, diffusion_initialization, diffusion_scale)
+#             X_measured = multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=fixed_X0)
+#             A_estimations = estimate_A_compare_methods(X_measured, dt, entropy_reg, methods, n_iterations=n_iterations)
+#             for method, A_hat in A_estimations.items():
+#                 temp_mse_scores[method].append(np.mean((A_hat - A) ** 2))
+#
+#         for method in methods:
+#             mean_mse = np.mean(temp_mse_scores[method])
+#             std_error = np.std(temp_mse_scores[method]) / np.sqrt(n_sdes)
+#             mse_scores[method].append(mean_mse)
+#             std_errs[method].append(std_error)
+#
+#     utils.save_experiment_results(results_filename, {'mse_scores': mse_scores, 'std_errs': std_errs})
+#
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description='Run SDE parameter estimation experiments.')
+#     # parameters for simulation
+#     parser.add_argument('--d', default=2, help='Dimension of the process.')
+#     parser.add_argument('--dt_em', default=0.001, help='Simulation time step.')
+#     parser.add_argument('--n_sdes', default=5, help='Number of SDEs to simulate per setting.')
+#     parser.add_argument('--T', default=1, help='Total length of observation.')
+#     parser.add_argument('--fixed_X0', default = None, help = 'How is each trajectory for a given SDE initialized? Options: None, zero, ones')
+#     parser.add_argument('--drift_initialization', default='negative_eigenvalue', help='Method to initialize drift matrix.')
+#     parser.add_argument('--diffusion_initialization', default='scaled_identity', help='Method to initialize diffusion matrix.')
+#     parser.add_argument('--diffusion_scale', default=0.1, help='Scale factor for diffusion matrix initialization.')
+#     # parameters for measurement
+#     parser.add_argument('--dt', default=0.02, help='Observation time step.')
+#     parser.add_argument('--num_trajectories', default=50, help='Number of trajectories per SDE (observations per time step).')
+#     # parameters for estimation
+#     parser.add_argument('--entropy_reg', default=0.01, help='Entropy regularization parameter for OT solver.')
+#     parser.add_argument('--n_iterations', default=1, help='Number of iterations for "iterative" approach.')
+#     # experiment parameters
+#     parser.add_argument('--ablation_variable_name', default='number of iterations', help='name of ablation variable')
+#     parser.add_argument('--ablation_values', default='1,2,3,4,5', help='Comma-separated values for the ablation study.')
+#     parser.add_argument('--methods', default=['OT', 'OT reg'], help='List of parameter estimation methods to try')
+#     args = parser.parse_args()
+#     main(args)
 
-def save_experiment_results(filename, variables, results):
-    os.makedirs('MSE_logs', exist_ok=True)
-    filepath = os.path.join('MSE_logs', filename)
-    data = {
-        'variables': variables,
-        'results': results
-    }
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=4)
-
-
-def load_experiment_results(filename):
-    filepath = os.path.join('MSE_logs', filename)
-    with open(filepath, 'r') as f:
-        data = json.load(f)
-    return data['variables'], data['results']
-
-
-def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_errs, list_method_labels, d,
-             experiment_name, save_plot = True):
-    """
-    Plot and save Mean Squared Error (MSE) results.
-
-    Parameters:
-    - ablation_values: List of values for the ablation variable.
-    - ablation_variable_name: Name of the ablation variable (string).
-    - list_mse_scores: List of lists containing MSE scores for each method.
-    - list_std_errs: List of lists containing standard errors for each method.
-    - list_method_labels: List of method names corresponding to the MSE scores.
-    - d: Number of dimensions for the experiment.
-    - experiment_name: Name of the experiment (string).
-    - save_plot: Boolean indicating whether to save the plot or not. Defaults to True.
-    """
-    fmt_list = ['-^', '-o', '--', '-s', '-d', '-x', '-*']
-    for method_name, mse_score, std_err, fmt in zip(list_method_labels, list_mse_scores, list_std_errs, fmt_list):
-        plt.errorbar(ablation_values, mse_score, yerr=std_err, fmt=fmt, label=method_name)
-    plt.xlabel(ablation_variable_name)
-    plt.ylabel('Mean Squared Error (MSE)')
-    plt.title(f'Parameter Estimation on {d}-dimensional Stationary Linear Additive Noise SDE')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-
-    # Show plot
-    plt.show()
-
-    # Save the plot
-    if save_plot:
-        os.makedirs('MSE_plots', exist_ok=True)
-        plot_filename = f"mse_plot_{experiment_name}.png"
-        filepath = os.path.join('MSE_plots', plot_filename)
-        plt.savefig(filepath)
 
 
 if __name__ == "__main__":
@@ -70,54 +98,64 @@ if __name__ == "__main__":
     diffusion_scale = 0.1
 
     # Variables for observations
-    num_trajectories = 500
+    num_trajectories = 50
     T = 1
     dt = 0.02
-    n_sdes = 5
+    n_sdes = 10
     fixed_X0 = np.ones(d)
 
     # Variables for parameter estimation
     entropy_reg = 0.01
+    n_iterations = 2
 
     # ablation parameter
-    ablation_variable_name = 'number of trajectories'
-    ablation_values = [10, 50, 100, 500]
+    ablation_variable_name = 'number of iterations'
+    ablation_values = [1, 2,3,4,5]
 
     # By default, we will compare expected value over trajectories, OT, OT with regularization
-    methods = ['OT', 'OT reg']
+    methods = ['OT reg']
     mse_scores = {method: [] for method in methods}
     std_errs = {method: [] for method in methods}
 
-    experiment_name = 'just_a_test_exp_formula_change'
+    experiment_name = f'{d}D_{ablation_variable_name}_experiment'
     results_filename = f"results_{experiment_name}.json"
 
-    for num_trajectories in ablation_values:
+    A_trues = []
+    X_measured_list = []
+    print('generating the data')
+    for i in tqdm(range(n_sdes)):
+        A = initialize_drift(d, initialization_type=drift_initialization)
+        A_trues.append(A)
+        # print('true A:', A)
+        G = initialize_diffusion(d, initialization_type=diffusion_initialization, diffusion_scale=diffusion_scale)
+        # X = multiple_ou_trajectories(num_trajectories, d, T, dt_EM, A, G, X0=fixed_X0)
+        # # subsample to simulate the measured process
+        # step_ratio = int(dt / dt_EM)
+        # X_measured = X[:, ::step_ratio, :]
+        X_measured = multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G,
+                                                                     X0=fixed_X0)
+        X_measured_list.append(X_measured)
+
+
+    for n_iterations in ablation_values:
         # Temporary storage for the current ablation value
         temp_mse_scores = {method: [] for method in methods}
-
         for i in tqdm(range(n_sdes)):
-            A = initialize_drift(d, initialization_type=drift_initialization)
-            G = initialize_diffusion(d, initialization_type=diffusion_initialization, diffusion_scale=diffusion_scale)
-            # X = multiple_ou_trajectories(num_trajectories, d, T, dt_EM, A, G, X0=fixed_X0)
-            # # subsample to simulate the measured process
-            # step_ratio = int(dt / dt_EM)
-            # X_measured = X[:, ::step_ratio, :]
-            X_measured = multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=fixed_X0)
-            A_estimations = estimate_A_compare_methods(X_measured, dt, entropy_reg, methods)
+            A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, entropy_reg, methods, n_iterations=n_iterations)
             for method, A_hat in A_estimations.items():
-                temp_mse_scores[method].append(np.mean((A_hat - A) ** 2))
-            # A_hat_traj, A_hat_OT, A_hat_OT_reg = estimate_A_compare_methods(X_measured, dt, entropy_reg=entropy_reg)
-            #
-            # temp_mse_scores['Trajectory'].append(np.mean((A_hat_traj - A) ** 2))
-            # temp_mse_scores['OT'].append(np.mean((A_hat_OT - A) ** 2))
-            # temp_mse_scores['OT reg'].append(np.mean((A_hat_OT_reg - A) ** 2))
+                temp_mse_scores[method].append(np.mean((A_hat - A_trues[i]) ** 2))
+                # A_hat_traj, A_hat_OT, A_hat_OT_reg = estimate_A_compare_methods(X_measured, dt, entropy_reg=entropy_reg)
+                #
+                # temp_mse_scores['Trajectory'].append(np.mean((A_hat_traj - A) ** 2))
+                # temp_mse_scores['OT'].append(np.mean((A_hat_OT - A) ** 2))
+                # temp_mse_scores['OT reg'].append(np.mean((A_hat_OT_reg - A) ** 2))
         # Compute mean MSEs and standard errors for the current ablation value
         for method in methods:
             mean_mse = np.mean(temp_mse_scores[method])
             std_error = np.std(temp_mse_scores[method]) / np.sqrt(n_sdes)
             mse_scores[method].append(mean_mse)
             std_errs[method].append(std_error)
-            print(f'Mean MSE ({method}) for {ablation_variable_name} = {num_trajectories}: {mean_mse}, Standard Error: {std_error}')
+            print(f'Mean MSE ({method}) for {ablation_variable_name} = {n_iterations}: {mean_mse}, Standard Error: {std_error}')
 
     # Save experimental variables and results
     variables = {
@@ -126,21 +164,22 @@ if __name__ == "__main__":
         'diffusion_initialization': diffusion_initialization,
         'diffusion_scale': diffusion_scale,
         'num_trajectories': num_trajectories,
-        'T': ablation_values,
+        'T': T,
         'dt_EM': dt_EM,
         'dt': dt,
         'n_sdes': n_sdes,
         'fixed_X0': fixed_X0.tolist(),
-        'entropy_reg': entropy_reg
+        'entropy_reg': entropy_reg,
+        'n_iterations': ablation_values
     }
     results = {
         'mse_scores': mse_scores,
         'std_errs': std_errs
     }
-    save_experiment_results(results_filename, variables, results)
+    utils.save_experiment_results(results_filename, variables, results)
 
     # Plotting the results using the generalized function
-    plot_MSE(ablation_values, ablation_variable_name,
+    plots.plot_MSE(ablation_values, ablation_variable_name,
              list(mse_scores.values()), list(std_errs.values()), methods, d, experiment_name)
 
 
