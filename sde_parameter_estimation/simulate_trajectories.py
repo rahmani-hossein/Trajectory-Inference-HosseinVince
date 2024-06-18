@@ -1,42 +1,59 @@
 import numpy as np
 from plots import *
-def initialize_drift(d, initialization_type = 'uniform_random_entries', high= 1, low = -1, magnitude = 1, sparsity = None):
-    if initialization_type == 'uniform_random_entries':
-        A = generate_random_matrix(d, high = high, low = low)
-    elif initialization_type == 'negative_eigenvalue':
-        A = generate_negative_eigenvalue_matrix(d, magnitude = magnitude)
-    return A
+import pickle
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm.auto import tqdm
+import utils
 
-def initialize_diffusion(d, initialization_type = 'scaled_identity', diffusion_scale = 0.1, high= 1, low = -1, sparsity = None):
-    if initialization_type == 'scaled_identity':
-        G = diffusion_scale*np.eye(d)
-    elif initialization_type == 'uniform_random_entries':
-        G = generate_random_matrix(d, high = high, low = low)
-    return G
+def create_measurement_data(args, base_params, ablation_param):
+    if 'T' in base_params:
+        max_T = base_params['T']
+    else:
+        max_T = max(ablation_param['T'])
+    if 'dt' in base_params:
+        min_dt = base_params['dt']
+    else:
+        min_dt = min(ablation_param['dt'])
+    if 'num_trajectories' in base_params:
+        max_num_trajectories = base_params['num_trajectories']
+    else:
+        max_num_trajectories = max(ablation_param['num_trajectories'])
+    with ProcessPoolExecutor() as executor:
+        with ProcessPoolExecutor() as executor:
+            futures = {executor.submit(generate_sde_data_cell_measurement, i, max_num_trajectories, max_T, min_dt,
+                                       base_params): i for i in range(base_params['n_sdes'])}
+            results = []
+            # Create a tqdm progress bar for the futures as they complete
+            for future in tqdm(as_completed(futures), total=base_params['n_sdes']):
+                results.append(future.result())
+    A_trues, G_trues, maximal_X_measured_list = zip(*[(res[0], res[1], res[2]) for res in results])
+    if args.save_measurements:
+        filename = f'measured_seed-{args.master_seed}_ablate_{args.ablation_variable_name}_d-{args.d}_N-{max_num_trajectories}_dt-{min_dt}_T-{max_T}'
+        utils.save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list)
+    return A_trues, G_trues, maximal_X_measured_list
 
+def generate_sde_data_cell_measurement(i, max_num_trajectories, max_T, min_dt, base_params):
+    np.random.seed(base_params['master_seed'] + i)
+    A = utils.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization'])
+    G = utils.initialize_diffusion(base_params['d'], initialization_type=base_params['diffusion_initialization'], diffusion_scale=base_params['diffusion_scale'])
+    maximal_X_measured = generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, base_params['d'], base_params['dt_EM'], A, G, base_params['X0'])
+    print(f'A for {i}th:', A)
+    return A, G, maximal_X_measured
+def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None):
+    n_measured_times = int(max_T / min_dt)
+    X_measured = np.zeros((max_num_trajectories, n_measured_times, d))
+    if X0 is None:
+        X0 = np.random.randn(d)
 
-# def simulate_trajectories(drift_type, noise_type, num_trajectories, T, dt, A, G, X0):
-#     """
-#     Generate multiple trajectories of a multidimensional Ornstein-Uhlenbeck process.
-#
-#     Parameters:
-#         drift_type (str): The functional type of the drift for the SDE ex. linear
-#         noise_type (
-#         num_trajectories (int): Number of trajectories to simulate.
-#         T (float): Total time period.
-#         dt (float): Time step size.
-#         A (numpy.ndarray): Drift matrix.
-#         G (numpy.ndarray): Variance matrix (for case of additive noise)
-#                          : List of variance matrices, one for each dimension (for case of multiplicative noise)
-#         X0 (numpy.ndarray): Initial value for each trajectory.
-#
-#     Returns:
-#         numpy.ndarray: 3D array where each "slice" corresponds to a single trajectory.
-#     """
-#     if noise_type == 'additive':
-#
-#
-#     return
+    for i in range(n_measured_times):
+        for n in range(max_num_trajectories):
+            if i == 0:
+                X_measured[n, 0, :] = X0
+            else:
+                measured_T = i * min_dt
+                # cell trajectory terminating at i*dt
+                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0)[-1]
+    return X_measured
 
 def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=None):
     '''
@@ -62,7 +79,8 @@ def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_E
     '''
     n_measured_times = int(T / dt)
     X_measured = np.zeros((num_trajectories, n_measured_times, d))
-
+    if X0 is None:
+        X0 = np.random.randn(d)
     for i in range(n_measured_times):
         for n in range(num_trajectories):
             if i == 0:
@@ -73,6 +91,37 @@ def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_E
                 X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0)[-1]
     return X_measured
 
+def ou_process(T, dt, A, G, X0):
+    """
+    Simulate a single trajectory of a multidimensional Ornstein-Uhlenbeck process:
+    dX_t = AX_tdt + GdW_t
+
+    Parameters:
+        T (float): Total time period.
+        dt (float): Time step size.
+        A (numpy.ndarray): Drift matrix.
+        G (numpy.ndarray): Variance matrix.
+        X0 (numpy.ndarray): Initial value.
+
+    Returns:
+        numpy.ndarray: Array of simulated trajectories.
+    """
+    num_steps = int(T / dt)
+    d = len(X0)
+    m = G.shape[0]
+    dW = np.sqrt(dt) * np.random.randn(num_steps, m)
+    X = np.zeros((num_steps, d))
+    X[0] = X0
+
+    for t in range(1, num_steps):
+        X[t] = X[t - 1] + dt * (A.dot(X[t - 1])) + G.dot(dW[t])
+
+    return X
+
+
+
+
+### old
 def multiple_ou_trajectories_cell_branching(num_trajectories, d, T, dt, A, G, init_population, pd=0.5, tau=0.02, X0=None):
     num_steps = int(T / dt)
     all_trajectories = np.zeros((num_trajectories, num_steps, d))
@@ -108,32 +157,6 @@ def multiple_ou_trajectories_cell_branching(num_trajectories, d, T, dt, A, G, in
 
     return all_trajectories
 
-def ou_process(T, dt, A, G, X0):
-    """
-    Simulate a single trajectory of a multidimensional Ornstein-Uhlenbeck process:
-    dX_t = AX_tdt + GdW_t
-
-    Parameters:
-        T (float): Total time period.
-        dt (float): Time step size.
-        A (numpy.ndarray): Drift matrix.
-        G (numpy.ndarray): Variance matrix.
-        X0 (numpy.ndarray): Initial value.
-
-    Returns:
-        numpy.ndarray: Array of simulated trajectories.
-    """
-    num_steps = int(T / dt)
-    d = len(X0)
-    m = G.shape[0]
-    dW = np.sqrt(dt) * np.random.randn(num_steps, m)
-    X = np.zeros((num_steps, d))
-    X[0] = X0
-
-    for t in range(1, num_steps):
-        X[t] = X[t - 1] + dt * (A.dot(X[t - 1])) + G.dot(dW[t])
-
-    return X
 
 
 def ou_step(X_prev, dt, A, G):
@@ -259,66 +282,42 @@ def multiple_multiplicative_noise_trajectories(num_trajectories, T, dt, A, G, X0
     return trajectories
 
 
-def select_drift_matrix(desired_eigenvalues):
-    """
-    Select a diagonal drift matrix A with diagonal entries from desired eigenvalues
-
-    Parameters:
-        desired_eigenvalues (list or numpy.ndarray): Desired eigenvalues for stability.
-
-    Returns:
-        numpy.ndarray: Drift matrix A.
-    """
-    # Construct A using desired eigenvalues
-    A = np.diag(desired_eigenvalues)
-
-    return A
 
 
-def generate_negative_eigenvalue_matrix(dimension, magnitude=1):
-    """
-    Generate a matrix with all negative eigenvalues.
+# def simulate_trajectories(drift_type, noise_type, num_trajectories, T, dt, A, G, X0):
+#     """
+#     Generate multiple trajectories of a multidimensional Ornstein-Uhlenbeck process.
+#
+#     Parameters:
+#         drift_type (str): The functional type of the drift for the SDE ex. linear
+#         noise_type (
+#         num_trajectories (int): Number of trajectories to simulate.
+#         T (float): Total time period.
+#         dt (float): Time step size.
+#         A (numpy.ndarray): Drift matrix.
+#         G (numpy.ndarray): Variance matrix (for case of additive noise)
+#                          : List of variance matrices, one for each dimension (for case of multiplicative noise)
+#         X0 (numpy.ndarray): Initial value for each trajectory.
+#
+#     Returns:
+#         numpy.ndarray: 3D array where each "slice" corresponds to a single trajectory.
+#     """
+#     if noise_type == 'additive':
+#
+#
+#     return
 
-    Parameters:
-        dimension (int): The dimension of the square matrix.
-        magnitude (int): The magnitude factor for the diagonal dominance.
 
-    Returns:
-        numpy.ndarray: A square matrix with all negative eigenvalues, validated by eigenvalue check.
-    """
-    max_attempts = 100  # Limit the number of attempts to prevent infinite loops
-    for attempt in range(max_attempts):
-        # Generate a random matrix
-        A = np.random.randn(dimension, dimension)
 
-        # Adjust the diagonal entries to ensure negative eigenvalues
-        for i in range(dimension):
-            # Making diagonal entries negatively dominant
-            # Subtract the sum of absolute values of row elements (excluding diagonal) and add a magnitude
-            A[i, i] = -np.abs(A[i, i]) - np.sum(np.abs(A[i, :])) + np.abs(A[i, i]) - magnitude
+# def generate_sde_data_cell_measurement(i, d, drift_initialization, diffusion_initialization, diffusion_scale, num_trajectories, T, dt_EM, dt, X0, master_seed):
+#     np.random.seed(master_seed+ i)  # Set seed for reproducibility
+#     A = initialize_drift(d, initialization_type=drift_initialization)
+#     G = initialize_diffusion(d, initialization_type=diffusion_initialization, diffusion_scale=diffusion_scale)
+#     X_measured = multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0)
+#     return A, G, X_measured
 
-        # Check if all eigenvalues are negative
-        eigenvalues = np.linalg.eigvals(A)
-        if np.all(eigenvalues < 0):
-            return A
 
-    raise ValueError("Failed to generate a matrix with all negative eigenvalues after {} attempts.".format(max_attempts))
 
-def generate_random_matrix(dimension, low=-1, high=1):
-    """
-    Generate a matrix with entries uniformly sampled from a specified interval.
 
-    Parameters:
-        dimension (int): The dimension of the square matrix.
-        low (float): The lower bound of the uniform distribution interval.
-        high (float): The upper bound of the uniform distribution interval.
-
-    Returns:
-        numpy.ndarray: A matrix with randomly sampled entries.
-    """
-    # Generate a random matrix with entries uniformly sampled from the interval [low, high]
-    A = np.random.uniform(low, high, (dimension, dimension))
-
-    return A
 
 

@@ -92,7 +92,7 @@ def estimate_linear_drift(X, dt, expectation = True, OT = True, entropy_reg = 0,
         A = estimate_A(X, dt, GGT = GGT)
     return A
 
-def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01, cur_est_A = None):
+def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01, cur_est_A = None, use_raw_avg = True):
     """
     Estimate the drift matrix A using optimal transport between successive marginal distributions.
 
@@ -145,7 +145,10 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg = 0.01, cur_est_A = None
         # print('plan:', p)
         # Use optimal transport distribution to estimate required terms
         sum_Edxt_xtT += (X_t1.T @ p @ X_t - X_t.T @ p @ X_t)
-        term = sum(np.outer(X_t[i], X_t[i]) for i in range(num_trajectories))/num_trajectories
+        if use_raw_avg:
+            term = sum(np.outer(X_t[i], X_t[i]) for i in range(num_trajectories))/num_trajectories
+        else:
+            term = (X_t.T @ p @ X_t)   #sum(np.outer(X_t[i], X_t[i]) for i in range(num_trajectories))/num_trajectories
         sum_Ext_xtT += term
         #(X_t.T @ np.eye(len(X_t)) @ X_t)  / len(X_t)
         #(X_t.T @ np.eye(len(X_t)) @ X_t)  / len(X_t))

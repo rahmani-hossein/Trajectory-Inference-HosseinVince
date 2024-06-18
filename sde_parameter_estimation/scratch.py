@@ -1,6 +1,26 @@
 import matplotlib as plt
 from parameter_estimation import *
+import utils
+import pickle
 from simulate_trajectories import *
+
+if __name__ == "__main__":
+    # Example usage:
+    filename = "measured_seed-0_dim-2_N-50_dt-0.02_T-2.0"
+    loaded_data = utils.load_measurement_data(filename)
+    # Accessing specific data
+    print(loaded_data.keys())
+    base_params = loaded_data['base']
+    ablation_param = loaded_data['ablation']
+    A_trues = loaded_data.get('A_trues', [])
+    G_trues = loaded_data.get('G_trues', [])
+    maximal_X_measured_list = loaded_data.get('maximal_X_measured', [])
+    print(base_params)
+    print(ablation_param)
+    print(G_trues)
+    print(maximal_X_measured_list[0])
+
+
 
 def master_sde_simulation_and_estimation(noise_type, T, dt, num_trajectories, num_sdes, d, m,
                                          A_initialization, G_initialization,
@@ -225,24 +245,24 @@ def compute_integrals(X, dt):
     integral_X2dt = np.sum(X[:, :-1] ** 2 * dt, axis=1)
     return integral_XdW, integral_X2dt
 
-if __name__ == "__main__":
-    # Simulate X_t
-    X = simulate_X_t(A, G, T, N, num_simulations)
-
-    # Compute integrals
-    integral_XdW, integral_X2dt = compute_integrals(X, dt)
-
-    # Compute Pearson correlation coefficient as independence score
-    correlation_coefficient, _ = pearsonr(integral_XdW, integral_X2dt)
-
-    print(f"Pearson correlation coefficient: {correlation_coefficient}")
-
-    # Plot the results
-    plt.scatter(integral_XdW, integral_X2dt)
-    plt.xlabel(r'$\int_0^T X_t \, dW_t$')
-    plt.ylabel(r'$\int_0^T X_t^2 \, dt$')
-    plt.title('Scatter plot of the two integrals')
-    plt.show()
+# if __name__ == "__main__":
+#     # Simulate X_t
+#     X = simulate_X_t(A, G, T, N, num_simulations)
+#
+#     # Compute integrals
+#     integral_XdW, integral_X2dt = compute_integrals(X, dt)
+#
+#     # Compute Pearson correlation coefficient as independence score
+#     correlation_coefficient, _ = pearsonr(integral_XdW, integral_X2dt)
+#
+#     print(f"Pearson correlation coefficient: {correlation_coefficient}")
+#
+#     # Plot the results
+#     plt.scatter(integral_XdW, integral_X2dt)
+#     plt.xlabel(r'$\int_0^T X_t \, dW_t$')
+#     plt.ylabel(r'$\int_0^T X_t^2 \, dt$')
+#     plt.title('Scatter plot of the two integrals')
+#     plt.show()
 
 # if __name__ == "__main__":
 #     # Define variables
