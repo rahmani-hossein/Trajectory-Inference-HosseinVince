@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 from simulate_trajectories import *
 from parameter_estimation import estimate_A_compare_methods
 import utils
@@ -14,49 +15,61 @@ def get_parser():
     parser.add_argument('--master_seed', type=int, default=0, help='Seed for reproducibility')
     parser.add_argument('--d', default=3, type=int, help='Dimension of the process.')
     parser.add_argument('--dt_em', default=0.001, type=float, help='Simulation time step.')
-    parser.add_argument('--n_sdes', default=10,type=int,help='Number of SDEs to simulate per setting.')
+    parser.add_argument('--n_sdes', default=10, type=int, help='Number of SDEs to simulate per setting.')
     parser.add_argument('--fixed_X0', default='none',
                         help='How is each trajectory for a given SDE initialized? Options: none, zero, ones')
     parser.add_argument('--drift_initialization', default='negative_eigenvalue',
                         help='Method to initialize drift matrix.')
     parser.add_argument('--diffusion_initialization', default='scaled_identity',
                         help='Method to initialize diffusion matrix.')
-    parser.add_argument('--diffusion_scale', default=0.1,type=float, help='Scale factor for diffusion matrix initialization.')
+    parser.add_argument('--diffusion_scale', default=0.1, type=float,
+                        help='Scale factor for diffusion matrix initialization.')
     # parameters for measurement
-    parser.add_argument('--dt', default=0.02,type=float, help='Observation time step.')
+    parser.add_argument('--dt', default=0.02, type=float, help='Observation time step.')
     parser.add_argument('--num_trajectories', default=50,
                         help='Number of trajectories per SDE (observations per time step).')
-    parser.add_argument('--T', default=1,type=float, help='Total length of observation.')
-    parser.add_argument('--save_measurements', default=True, help='whether or not to save raw SDE measurements')
+    parser.add_argument('--T', default=1, type=float, help='Total length of observation.')
     # parameters for estimation
-    parser.add_argument('--entropy_reg', default=0.01,type=float, help='Entropy regularization parameter for OT solver.')
-    parser.add_argument('--n_iterations', default=2,type=int, help='Number of iterations for "iterative" approach.')
+    parser.add_argument('--entropy_reg', default=0.01, type=float,
+                        help='Entropy regularization parameter for OT solver.')
+    parser.add_argument('--n_iterations', default=2, type=int, help='Number of iterations for "iterative" approach.')
     # experiment parameters
-    parser.add_argument('--ablation_variable_name', default='entropy_reg', help='name of ablation variable')
-    parser.add_argument('--ablation_values', default='0.0, 0.0001, 0.001, 0.01, 0.1',
+    parser.add_argument('--ablation_variable_name', default='T', help='name of ablation variable')
+    parser.add_argument('--ablation_values', default='1, 2, 3, 4, 5',
                         help='Comma-separated values for the ablation study.')
     parser.add_argument('--methods', default=['OT', 'OT reg'], help='List of parameter estimation methods to try')
+    parser.add_argument('--save_results', default=True, help='whether or not to save parameter estimation results')
     return parser
 
 
 def main(args):
-    experiment_name = f'{args.d}D_{args.ablation_variable_name}_experiment'
     base_params, ablation_param = utils.extract_measurement_parameters(args)
     # create measurement data along with true SDE parameters (or load them from a pre-existing file)
     if args.measurement_load_file is None:
         print('Generating the data samples')
-        A_trues, G_trues, maximal_X_measured_list = create_measurement_data(args, base_params, ablation_param)
+        result = create_measurement_data(args, base_params, ablation_param)
+        if isinstance(result, str):
+            measurement_filename = result
+            A_trues, G_trues, maximal_X_measured_list = utils.load_measurement_data(measurement_filename)
+            print(f'Retrieved previously saved measurements from {measurement_filename}')
+        else:
+            A_trues, G_trues, maximal_X_measured_list, measurement_filename = result
+            print('Finished generating the data samples')
     else:
-        A_trues, G_trues, maximal_X_measured_list = utils.load_measurement_data(args.measurement_load_file)
-        print(f'Retrieved previously saved measurements from {args.measurement_load_file}')
+        measurement_filename = args.measurement_load_file
+        A_trues, G_trues, maximal_X_measured_list = utils.load_measurement_data(measurement_filename)
+        print(f'Retrieved previously saved measurements from {measurement_filename}')
 
+    experiment_name = f'{args.ablation_variable_name}_from_{measurement_filename}'
     measurement_variables = ['T', 'dt', 'num_trajectories']
     parameter_estimation_variables = ['n_iterations', 'entropy_reg']
 
     if args.ablation_variable_name in measurement_variables:
-        mse_scores, std_errs = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args, measurement_ablation=True)
+        mse_scores, std_errs = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args,
+                                            measurement_ablation=True)
     elif args.ablation_variable_name in parameter_estimation_variables:
-        mse_scores, std_errs = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args, measurement_ablation=False)
+        mse_scores, std_errs = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args,
+                                            measurement_ablation=False)
     else:
         raise ValueError(f"Unsupported ablation variable: {args.ablation_variable_name}")
 
@@ -70,7 +83,8 @@ def main(args):
     ablation_values = ablation_param[args.ablation_variable_name]
     plots.plot_MSE(ablation_values, args.ablation_variable_name,
                    list(mse_scores.values()), list(std_errs.values()), args.methods, args.d, experiment_name)
-    utils.save_experiment_results_args(results_filename, base_params, ablation_param, A_trues, G_trues, results)
+    if args.save_results:
+        utils.save_experiment_results_args(results_filename, base_params, ablation_param, A_trues, G_trues, results)
 
 
 def run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args, measurement_ablation=True):
@@ -89,7 +103,7 @@ def run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args
         # loop over each ablation value
         for T in ablation_values:
             num_steps = int(T / args.dt)
-            print(f'T={T}:', num_steps)
+            # print(f'T={T}:', num_steps)
             X_measured_ablation_dict[T] = [maximal_X_measured[:, : num_steps, :] for maximal_X_measured in
                                            maximal_X_measured_list]
     elif args.ablation_variable_name == 'dt':
@@ -111,7 +125,8 @@ def run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args
                 dt = float(args.dt)
             X_measured_list = X_measured_ablation_dict[ablation_value]
             mean_mse_scores_cur, std_errs_cur = utils.compute_mse_across_methods(X_measured_list, dt, A_trues,
-                                                                                 ablation_value, args, measurement_ablation)
+                                                                                 ablation_value, args,
+                                                                                 measurement_ablation)
             # add MSE for the corresponding ablation value
             for method in args.methods:
                 mse_scores[method].append(mean_mse_scores_cur[method])
@@ -120,7 +135,8 @@ def run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, args
         for ablation_value in ablation_values:
             X_measured_list = maximal_X_measured_list
             mean_mse_scores_cur, std_errs_cur = utils.compute_mse_across_methods(X_measured_list, args.dt, A_trues,
-                                                                                 ablation_value, args, measurement_ablation)
+                                                                                 ablation_value, args,
+                                                                                 measurement_ablation)
             # add MSE for the corresponding ablation value
             for method in args.methods:
                 mse_scores[method].append(mean_mse_scores_cur[method])

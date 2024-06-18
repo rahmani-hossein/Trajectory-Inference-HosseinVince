@@ -1,36 +1,40 @@
 #!/bin/bash
 
 # Parameters to ablate
-T_VALUES="0.5 1.0 1.5"
-DT_VALUES="0.002 0.01 0.02"
-NUM_TRAJECTORIES_VALUES="50"
+T_VALUES="1.0"
+DT_VALUES="0.02"
+NUM_TRAJECTORIES_VALUES="100"
+D_VALUES="2 3 4 5 6 7 8 9 10"  # Ensure spaces are used as delimiters
 
 cd ..
-
 # Loop over each parameter combination
-for T in $T_VALUES
+
+for d in $D_VALUES
 do
-    for DT in $DT_VALUES
+    for T in $T_VALUES
     do
-        for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+        for DT in $DT_VALUES
         do
-            python main.py --T=$T \
-                           --dt=$DT \
-                           --num_trajectories=$NUM_TRAJ \
-                           --save_measurements=True \
-                           --d=3 \
-                           --dt_em=0.001 \
-                           --n_sdes=10 \
-                           --fixed_X0='none' \
-                           --drift_initialization='negative_eigenvalue' \
-                           --diffusion_initialization='scaled_identity' \
-                           --diffusion_scale=0.1 \
-                           --entropy_reg=0.1 \
-                           --ablation_variable_name='n_iterations' \
-                           --ablation_values='1,2,3,4,5'
-            echo "Experiment done for T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+            for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+            do
+                echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+                python main.py --T=$T \
+                               --dt=$DT \
+                               --num_trajectories=$NUM_TRAJ \
+                               --save_results=True \
+                               --d=$d \
+                               --dt_em=0.001 \
+                               --n_sdes=10 \
+                               --fixed_X0='none' \
+                               --drift_initialization='negative_eigenvalue' \
+                               --diffusion_initialization='scaled_identity' \
+                               --diffusion_scale=0.1 \
+                               --entropy_reg=0.1 \
+                               --ablation_variable_name='n_iterations' \
+                               --ablation_values='1,2,3,4,5' \
+                               --master_seed=0
+                echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+            done
         done
     done
 done
-
-echo "All experiments completed."

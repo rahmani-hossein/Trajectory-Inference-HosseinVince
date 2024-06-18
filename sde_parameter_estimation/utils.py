@@ -177,6 +177,23 @@ def compute_mse_across_methods(X_measured_list, dt, A_trues, ablation_value, arg
             f'Mean MSE ({method}) for {args.ablation_variable_name} = {ablation_value}: {mean_mse}, Standard Error: {std_error}')
     return mean_mse_scores, std_errs
 
+def find_existing_data(args, max_num_trajectories, max_T, min_dt):
+    directory = 'Measurement_data'
+    pattern = f'seed-{args.master_seed}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
+    existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
+
+    # Check each file to see if it meets the conditions
+    for filename in existing_files:
+        # Extract parts from the filename, assuming a specific naming convention
+        parts = filename.replace('.pkl', '').split('_')
+        # Example filename: "seed-0_d-3_n_sdes-10_dt-0.02_N-50_T-1.0"
+        num_trajectories = int(parts[5].split('-')[1])
+        T = float(parts[6].split('-')[1])
+
+        if num_trajectories >= max_num_trajectories and T >= max_T:
+            return os.path.join(filename)
+
+    return None
 
 def save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list):
     '''
@@ -195,7 +212,6 @@ def save_measurement_data(filename, base_params, ablation_param, A_trues, G_true
     filepath = os.path.join('Measurement_data', filename)
     data = {
         'base': base_params,
-        'ablation': ablation_param,
         'A_trues': A_trues,
         'G_trues': G_trues,
         'maximal_X_measured': maximal_X_measured_list
@@ -235,9 +251,6 @@ def load_measurement_data(filename):
     base_params = data['base']
     print('Base parameters of saved data')
     print(base_params)
-    ablation_param = data['ablation']
-    print('Ablated parameter for measurement')
-    print(ablation_param)
     A_trues = data.get('A_trues', [])
     G_trues = data.get('G_trues', [])
     maximal_X_measured_list = data.get('maximal_X_measured', [])
@@ -245,8 +258,8 @@ def load_measurement_data(filename):
 
 
 def save_experiment_results(filename, variables, results):
-    os.makedirs('MSE_logs', exist_ok=True)
-    filepath = os.path.join('MSE_logs', filename)
+    os.makedirs('../MSE_logs', exist_ok=True)
+    filepath = os.path.join('../MSE_logs', filename)
     data = {
         'variables': variables,
         'results': results
@@ -256,8 +269,8 @@ def save_experiment_results(filename, variables, results):
 
 
 def save_experiment_results_args(filename, base_params, ablation_param, A_trues, G_trues, results):
-    os.makedirs('MSE_logs', exist_ok=True)
-    filepath = os.path.join('MSE_logs', filename)
+    os.makedirs('../MSE_logs', exist_ok=True)
+    filepath = os.path.join('../MSE_logs', filename)
 
     data = {
         'base': base_params,
@@ -269,7 +282,7 @@ def save_experiment_results_args(filename, base_params, ablation_param, A_trues,
 
 
 def load_experiment_results(filename):
-    filepath = os.path.join('MSE_logs', filename)
+    filepath = os.path.join('../MSE_logs', filename)
     with open(filepath, 'r') as f:
         data = json.load(f)
     return data['variables'], data['results']

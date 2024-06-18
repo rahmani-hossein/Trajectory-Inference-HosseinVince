@@ -33,9 +33,9 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
 
     # Save the plot
     if save_plot:
-        os.makedirs('MSE_plots', exist_ok=True)
+        os.makedirs('../MSE_plots', exist_ok=True)
         plot_filename = f"mse_plot_{experiment_name}.png"
-        filepath = os.path.join('MSE_plots', plot_filename)
+        filepath = os.path.join('../MSE_plots', plot_filename)
         plt.savefig(filepath)
 
     # Show plot

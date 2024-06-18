@@ -18,6 +18,14 @@ def create_measurement_data(args, base_params, ablation_param):
         max_num_trajectories = base_params['num_trajectories']
     else:
         max_num_trajectories = max(ablation_param['num_trajectories'])
+    # filepath = os.path.join('Measurement_data', filename)
+    # if os.path.exists(filepath):
+    #     print(f"There is already saved measurement data under {filename}. ")
+    #     return filename
+    filepath = utils.find_existing_data(args, max_num_trajectories, max_T, min_dt)
+    if filepath:
+        print(f"There is already saved measurement data under {filepath}. ")
+        return filepath
     with ProcessPoolExecutor() as executor:
         with ProcessPoolExecutor() as executor:
             futures = {executor.submit(generate_sde_data_cell_measurement, i, max_num_trajectories, max_T, min_dt,
@@ -26,18 +34,17 @@ def create_measurement_data(args, base_params, ablation_param):
             # Create a tqdm progress bar for the futures as they complete
             for future in tqdm(as_completed(futures), total=base_params['n_sdes']):
                 results.append(future.result())
+    filename = f'seed-{args.master_seed}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}_N-{max_num_trajectories}_T-{max_T}'
     A_trues, G_trues, maximal_X_measured_list = zip(*[(res[0], res[1], res[2]) for res in results])
-    if args.save_measurements:
-        filename = f'measured_seed-{args.master_seed}_ablate_{args.ablation_variable_name}_d-{args.d}_N-{max_num_trajectories}_dt-{min_dt}_T-{max_T}'
-        utils.save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list)
-    return A_trues, G_trues, maximal_X_measured_list
+    utils.save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list)
+    return A_trues, G_trues, maximal_X_measured_list, filename
 
 def generate_sde_data_cell_measurement(i, max_num_trajectories, max_T, min_dt, base_params):
     np.random.seed(base_params['master_seed'] + i)
     A = utils.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization'])
     G = utils.initialize_diffusion(base_params['d'], initialization_type=base_params['diffusion_initialization'], diffusion_scale=base_params['diffusion_scale'])
     maximal_X_measured = generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, base_params['d'], base_params['dt_EM'], A, G, base_params['X0'])
-    print(f'A for {i}th:', A)
+    print(f'A for SDE {i}:', A)
     return A, G, maximal_X_measured
 def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None):
     n_measured_times = int(max_T / min_dt)
