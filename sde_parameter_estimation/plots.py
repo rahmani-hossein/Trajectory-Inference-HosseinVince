@@ -23,6 +23,10 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
     """
     fmt_list = ['-^', '-o', '--', '-s', '-d', '-x', '-*']
     for method_name, mse_score, std_err, fmt in zip(list_method_labels, list_mse_scores, list_std_errs, fmt_list):
+        # if method_name == 'OT':
+        #     method_name = 'OT reg (1st iteration)'
+        # if method_name == 'OT reg':
+        #     method_name = 'OT reg (2nd iteration)'
         plt.errorbar(ablation_values, mse_score, yerr=std_err, fmt=fmt, label=method_name)
     plt.xlabel(ablation_variable_name)
     plt.ylabel('Mean Squared Error (MSE)')

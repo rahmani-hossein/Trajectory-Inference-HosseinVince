@@ -2,8 +2,12 @@ import os
 import json
 import numpy as np
 import pickle
+from scipy.spatial.distance import mahalanobis
+from scipy.stats import chi2
 from tqdm import tqdm
-from parameter_estimation import estimate_A_compare_methods
+
+
+# from parameter_estimation import estimate_A_compare_methods
 
 
 def extract_measurement_parameters(args):
@@ -35,6 +39,7 @@ def extract_measurement_parameters(args):
         'num_trajectories': int(args.num_trajectories),
         'X0': initialize_X0(args.fixed_X0, args.d)
     }
+    # print(f'Measured data comprises {args.num_trajectories} observations from {int(args.T/args.dt)} time points (T={args.T}, dt={args.dt})')
     simulation_measurement_variables = ['T', 'dt_EM', 'dt', 'num_trajectories']
     if args.ablation_variable_name in simulation_measurement_variables:
         base_params.pop(args.ablation_variable_name)
@@ -42,16 +47,32 @@ def extract_measurement_parameters(args):
     ablation_param = {
         args.ablation_variable_name: ablation_values
     }
+    print(f'Our experiment considers the variable {args.ablation_variable_name} across the values {ablation_values}')
+    print(f'The evaluated parameter estimation methods are {args.methods}')
     return base_params, ablation_param
+
+
+def extract_estimation_parameters(args):
+    estimation_params = {
+        'entropy_reg': args.entropy_reg,
+        'n_iterations': args.n_iterations
+    }
+    parameter_estimation_variables = ['n_iterations', 'entropy_reg']
+    if args.ablation_variable_name in parameter_estimation_variables:
+        estimation_params.pop(args.ablation_variable_name)
+    return estimation_params
 
 
 def initialize_X0(fixed_X0, d):
     if fixed_X0 == 'none':
+        print('we will have random X0 for each trajectory')
         return None
     elif fixed_X0 == 'ones':
+        print('each X0 will start at (1,...,1)')
         return np.ones(d)
     elif fixed_X0 == 'zeros':
         return np.zeros(d)
+        print('each X0 will start at (0,...,0)')
     else:
         raise ValueError(f"Unsupported X0 initialization: {fixed_X0}")
 
@@ -137,47 +158,62 @@ def generate_random_matrix(dimension, low=-1, high=1):
     return A
 
 
-def compute_mse_across_methods(X_measured_list, dt, A_trues, ablation_value, args, measurement_ablation=True):
-    '''
-    Args:
-        X_measured_list: list of measured data indexed by list of SDEs
-        dt: time granularity for measurements
-        A_trues: list of true drift matrices A indexed by list of SDEs
-        args:
-    Returns:
+def estimate_gaussian_marginal(X_t):
+    """ Estimate Gaussian parameters from samples. """
+    fit_mean = np.mean(X_t, axis=0)
+    fit_cov = np.cov(X_t, rowvar=False)
+    return fit_mean, fit_cov
 
-    '''
-    std_errs = {}
-    mean_mse_scores = {}
-    temp_mse_scores = {method: [] for method in args.methods}
 
-    # first iterate over each SDE and collect results
-    for i in tqdm(range(int(args.n_sdes))):
-        if measurement_ablation:
-            A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, args.entropy_reg, args.methods,
-                                                       n_iterations=args.n_iterations)
-        else:
-            if args.ablation_variable_name == 'n_iterations':
-                A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, args.entropy_reg, args.methods,
-                                                           n_iterations=ablation_value)
-            elif args.ablation_variable_name == 'entropy_reg':
-                A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, methods=args.methods,
-                                                           entropy_reg=ablation_value,
-                                                           n_iterations=args.n_iterations)
-        for method, A_hat in A_estimations.items():
-            temp_mse_scores[method].append(np.mean((A_hat - A_trues[i]) ** 2))
+def gaussian_outer_product(fit_mean, fit_cov):
+    """ Compute the outer product using Gaussian parameters. """
+    d = len(fit_mean)
+    outer_prod = np.outer(fit_mean, fit_mean) + fit_cov
+    return outer_prod
 
-    # Compute mean MSEs and standard errors for the current ablation value
-    for method in args.methods:
-        mean_mse = np.mean(temp_mse_scores[method])
-        mean_mse_scores[method] = mean_mse
-        std_error = np.std(temp_mse_scores[method]) / np.sqrt(args.n_sdes)
-        std_errs[method] = std_error
-        print(
-            f'Mean MSE ({method}) for {args.ablation_variable_name} = {ablation_value}: {mean_mse}, Standard Error: {std_error}')
-    return mean_mse_scores, std_errs
 
-def find_existing_data(args, max_num_trajectories, max_T, min_dt):
+def calculate_weights(X_t, fit_mean, fit_cov):
+    """ Calculate weights for each sample based on Mahalanobis distance. """
+    inv_covmat = np.linalg.inv(fit_cov)
+    weights = np.array([np.exp(-0.5 * mahalanobis(x, fit_mean, inv_covmat) ** 2) for x in X_t])
+    weights /= np.sum(weights)  # Normalize the weights
+    return weights
+
+
+def preprocess_measured_data(maximal_X_measured_list, ablation_values, max_num_trajectories, max_T, min_dt, args, measurement_ablation):
+    if measurement_ablation:
+        X_measured_ablation_dict = {}
+        if args.ablation_variable_name == 'num_trajectories':
+            for num_trajectories in ablation_values:
+                step_ratio = int(args.dt / min_dt)
+                num_steps = int(args.T / min_dt)
+                X_measured_ablation_dict[num_trajectories] = [maximal_X_measured[: int(num_trajectories), :num_steps:step_ratio, :] for maximal_X_measured in
+                                               maximal_X_measured_list]
+        if args.ablation_variable_name == 'T':
+            for T in ablation_values:
+                num_steps = int(T / args.dt)
+                step_ratio = int(args.dt / min_dt)
+                X_measured_ablation_dict[T] = [maximal_X_measured[: args.num_trajectories, :num_steps:step_ratio, :] for maximal_X_measured in
+                                               maximal_X_measured_list]
+        if args.ablation_variable_name == 'dt':
+            # loop over each ablation value
+            for dt in ablation_values:
+                num_steps = int(args.T / args.dt)
+                step_ratio = int(dt / min_dt)
+                X_measured_ablation_dict[dt] = [maximal_X_measured[:args.num_trajectories, :num_steps:step_ratio, :] for maximal_X_measured in
+                                                maximal_X_measured_list]
+        return X_measured_ablation_dict
+    else:
+        step_ratio = int(args.dt / min_dt)
+        num_steps = int(args.T / min_dt)
+        X_measured_list = [maximal_X_measured[: args.num_trajectories, :num_steps:step_ratio, :]
+                                                      for maximal_X_measured in
+                                                      maximal_X_measured_list]
+        return X_measured_list
+
+
+
+def find_max_params(args, min_dt):
     directory = 'Measurement_data'
     pattern = f'seed-{args.master_seed}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
     existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
@@ -189,13 +225,35 @@ def find_existing_data(args, max_num_trajectories, max_T, min_dt):
         # Example filename: "seed-0_d-3_n_sdes-10_dt-0.02_N-50_T-1.0"
         num_trajectories = int(parts[5].split('-')[1])
         T = float(parts[6].split('-')[1])
+    return num_trajectories, T
+
+
+def find_existing_data(args, max_num_trajectories, max_T, min_dt, simulation_mode = 'cell_death'):
+    directory = 'Measurement_data'
+    if simulation_mode == 'cell_death':
+        pattern = f'seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
+        existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
+        offset = 0
+    elif simulation_mode == 'unkilled':
+        pattern = f'unkilled_seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
+        existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
+        offset = 1
+    # Check each file to see if it meets the conditions
+    for filename in existing_files:
+        # Extract parts from the filename, assuming a specific naming convention
+        parts = filename.replace('.pkl', '').split('_')
+        # Example filename: "seed-0_d-3_n_sdes-10_dt-0.02_N-50_T-1.0"
+        num_trajectories = int(parts[6+offset].split('-')[1])
+        T = float(parts[7+offset].split('-')[1])
 
         if num_trajectories >= max_num_trajectories and T >= max_T:
             return os.path.join(filename)
 
     return None
 
-def save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list):
+
+def save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list,
+                          max_num_trajectories, max_T, min_dt):
     '''
     Args:
         filename:
@@ -203,7 +261,11 @@ def save_measurement_data(filename, base_params, ablation_param, A_trues, G_true
         ablation_param: dictionary storing the values of the ablation parameter (T, dt, num_trajectories, or None)
         A_trues: list of true drift matrices A for each SDE
         G_trues: list of true diffusion matrices G for each SDE
-        maximal_X_measured_list: list of the measured data for each SDE under the maximal
+        maximal_X_measured_list: list of the measured data for each SDE
+        max_num_trajectories:
+        max_T:
+        min_dt:
+
 
     Returns:
         saves the measurements and true SDE parameters
@@ -211,9 +273,13 @@ def save_measurement_data(filename, base_params, ablation_param, A_trues, G_true
     os.makedirs('Measurement_data', exist_ok=True)
     filepath = os.path.join('Measurement_data', filename)
     data = {
+        'ablation': ablation_param,
         'base': base_params,
         'A_trues': A_trues,
         'G_trues': G_trues,
+        'max_num_trajectories': max_num_trajectories,
+        'max_T': max_T,
+        'min_dt': min_dt,
         'maximal_X_measured': maximal_X_measured_list
     }
     with open(filepath, 'wb') as f:
@@ -228,6 +294,13 @@ def save_measurement_data(filename, base_params, ablation_param, A_trues, G_true
     # with open(filepath, 'wb') as f:
     #     pickle.dump(save_dict, f)
     print(f"Data generation complete and saved in {filename}.")
+
+
+def save_detailed_experiment_data(filename, data):
+    os.makedirs('../MSE_detailed_logs', exist_ok=True)
+    filepath = os.path.join('../MSE_detailed_logs', filename)
+    with open(filepath, 'wb') as f:
+        pickle.dump(data, f)
 
 
 def load_measurement_data(filename):
@@ -249,12 +322,19 @@ def load_measurement_data(filename):
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     base_params = data['base']
+    max_num_trajectories = data['max_num_trajectories']
+    max_T = data['max_T']
+    min_dt = data['min_dt']
     print('Base parameters of saved data')
     print(base_params)
     A_trues = data.get('A_trues', [])
+    i = 0
+    for A in A_trues:
+        print(f'A from SDE {i}: ', A)
+        i += 1
     G_trues = data.get('G_trues', [])
     maximal_X_measured_list = data.get('maximal_X_measured', [])
-    return A_trues, G_trues, maximal_X_measured_list
+    return A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt
 
 
 def save_experiment_results(filename, variables, results):
@@ -268,17 +348,20 @@ def save_experiment_results(filename, variables, results):
         json.dump(data, f, indent=4)
 
 
-def save_experiment_results_args(filename, base_params, ablation_param, A_trues, G_trues, results):
+def save_experiment_results_args(filename, base_params, ablation_param, estimation_params, A_trues, G_trues, results):
     os.makedirs('../MSE_logs', exist_ok=True)
     filepath = os.path.join('../MSE_logs', filename)
+    base_params.pop('X0')
 
     data = {
         'base': base_params,
         'ablation': ablation_param,
+        'estimation': estimation_params,
         'results': results
     }
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=4)
+    print(f'experiment results saved')
 
 
 def load_experiment_results(filename):

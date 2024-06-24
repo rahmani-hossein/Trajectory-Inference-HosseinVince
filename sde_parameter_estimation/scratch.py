@@ -6,19 +6,63 @@ from simulate_trajectories import *
 
 if __name__ == "__main__":
     # Example usage:
-    filename = "measured_seed-0_dim-2_N-50_dt-0.02_T-2.0"
-    loaded_data = utils.load_measurement_data(filename)
-    # Accessing specific data
-    print(loaded_data.keys())
-    base_params = loaded_data['base']
-    ablation_param = loaded_data['ablation']
-    A_trues = loaded_data.get('A_trues', [])
-    G_trues = loaded_data.get('G_trues', [])
-    maximal_X_measured_list = loaded_data.get('maximal_X_measured', [])
-    print(base_params)
-    print(ablation_param)
-    print(G_trues)
-    print(maximal_X_measured_list[0])
+    N = 1000
+    d=1
+    T=1
+    dt=0.02
+    num_steps_truncate = 50
+    N_truncate = 100
+    N_plot = 1
+    filename = "seed-2_X0-none_d-1_n_sdes-10_dt-0.02_N-100_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
+    for idx in range(10):
+    # idx = 2
+        X = maximal_X_measured_list[idx][:N_truncate, :num_steps_truncate, :]
+        print(X[1])
+        print('true A:', A_trues[idx])
+        print('true GGT:', G_trues[idx]@np.transpose(G_trues[idx]))
+        # plot_trajectories(X[0], T, dt)
+        dt = 0.02
+        shuffle = True
+        reg = 0.01
+        shuffled_X = np.zeros((N_truncate, num_steps_truncate, d))
+        # Fill shuffled_X with shuffled marginal samples
+        shuffled_samples = extract_marginal_samples(X, shuffle=True)
+        for i in range(num_steps_truncate):
+            shuffled_X[:, i, :] = shuffled_samples[i]
+        # for j in range(N_plot):
+        #     plot_fuck(X, shuffled_X, trajectory_index=j)
+        #
+        # print(X)
+        # print(shuffled_X)
+
+        # X_OT = estimate_next_step_OT(X, dt, entropy_reg=0, shuffle = shuffle)
+        # X_OT_reg = estimate_next_step_OT(X, dt, entropy_reg=reg, shuffle= shuffle)
+        raw_avg = True
+        A_OT_reg, X_OT_reg = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=reg, return_OT_traj = True, use_raw_avg=raw_avg)
+        GG_T_OT_reg = estimate_GGT(X_OT_reg, T)
+        print(f'OT reg (reg={reg}) estimated A:', A_OT_reg)
+        print(f'A diff:', (A_OT_reg - A_trues[idx]))
+        print(f'MSE OT reg:', np.mean((A_OT_reg - A_trues[idx]) ** 2))
+        print(f'OT reg (reg={reg}) estimated GGT:', GG_T_OT_reg)
+        print(f'G diff:', (GG_T_OT_reg - G_trues[idx] @G_trues[idx].T  ))
+        A_OT, X_OT = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=0, return_OT_traj = True, use_raw_avg=raw_avg)#estimate_A_exp(X_OT, dt)
+        GG_T_OT = estimate_GGT(X_OT, T)
+        print(f'OT estimated A:', A_OT)
+        print(f'A diff:', (A_OT - A_trues[idx]))
+        print(f'MSE OT:', np.mean((A_OT - A_trues[idx]) ** 2))
+        print(f'OT estimated GGT:', GG_T_OT)
+        print(f'G diff:', (GG_T_OT - G_trues[idx] @G_trues[idx].T))
+        for j in range(N_plot):
+            plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
+
+
+
+
+
+    # filename = "seed-0_d-2_n_sdes-10_dt-0.02_N-1000_T-1.0"
+    # loaded_data = utils.load_measurement_data(filename)
+
 
 
 

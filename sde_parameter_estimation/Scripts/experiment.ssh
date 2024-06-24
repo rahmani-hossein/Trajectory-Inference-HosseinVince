@@ -4,11 +4,10 @@
 T_VALUES="1.0"
 DT_VALUES="0.02"
 NUM_TRAJECTORIES_VALUES="100"
-D_VALUES="2 3 4 5 6 7 8 9 10"  # Ensure spaces are used as delimiters
+D_VALUES="10 20 30 40 50"  # Ensure spaces are used as delimiters
 
 cd ..
 # Loop over each parameter combination
-
 for d in $D_VALUES
 do
     for T in $T_VALUES
@@ -18,21 +17,25 @@ do
             for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
             do
                 echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
-                python main.py --T=$T \
-                               --dt=$DT \
-                               --num_trajectories=$NUM_TRAJ \
-                               --save_results=True \
-                               --d=$d \
-                               --dt_em=0.001 \
-                               --n_sdes=10 \
-                               --fixed_X0='none' \
-                               --drift_initialization='negative_eigenvalue' \
-                               --diffusion_initialization='scaled_identity' \
-                               --diffusion_scale=0.1 \
-                               --entropy_reg=0.1 \
-                               --ablation_variable_name='n_iterations' \
-                               --ablation_values='1,2,3,4,5' \
-                               --master_seed=0
+                python main.py \
+                    --master_seed=2 \
+                    --d=$d \
+                    --simulation_mode='cell_death' \
+                    --dt_em=0.001 \
+                    --n_sdes=10 \
+                    --fixed_X0='none' \
+                    --drift_initialization='negative_eigenvalue' \
+                    --diffusion_initialization='scaled_identity' \
+                    --diffusion_scale=0.1 \
+                    --dt=$DT \
+                    --num_trajectories=$NUM_TRAJ \
+                    --T=$T \
+                    --entropy_reg=0.01 \
+                    --n_iterations=1 \
+                    --ablation_variable_name='n_iterations' \
+                    --ablation_values='1, 2, 3' \
+                    --methods OT 'OT reg' \
+                    --save_results=True
                 echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
             done
         done
