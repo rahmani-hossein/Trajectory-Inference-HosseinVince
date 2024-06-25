@@ -11,10 +11,10 @@ if __name__ == "__main__":
     T=1
     dt=0.02
     num_steps_truncate = 50
-    N_truncate = 100
+    N_truncate = 5
     N_plot = 1
     A_biases, G_biases = [], []
-    filename = "unkilled_seed-5_X0-none_d-1_n_sdes-10_dt-0.02_N-100_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    filename = "unkilled_seed-2_X0-none_d-1_n_sdes-10_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
     for idx in range(10):
     # idx = 2
@@ -58,8 +58,8 @@ if __name__ == "__main__":
         G_bias = (GG_T_OT - G_trues[idx] @G_trues[idx].T)[0][0]
         G_biases.append(G_bias)
         print(f'G diff:', G_bias)
-        # for j in range(N_plot):
-        #     plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
+        for j in range(N_plot):
+            plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
     print('A biases:', A_biases)
     print('G biases:', G_biases)
 
