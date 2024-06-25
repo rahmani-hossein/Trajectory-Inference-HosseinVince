@@ -61,7 +61,7 @@ def main(args):
         A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(measurement_filename)
         print(f'Retrieved previously saved measurements from {measurement_filename}')
 
-    experiment_name = f'000_{args.ablation_variable_name}_from_{measurement_filename}'
+    experiment_name = f'test_{args.ablation_variable_name}_from_{measurement_filename}'
     measurement_variables = ['T', 'dt', 'num_trajectories']
     parameter_estimation_variables = ['n_iterations', 'entropy_reg']
 

@@ -170,12 +170,12 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, us
                         range(num_trajectories)) / num_trajectories
             term2 = sum(np.outer(X_OT[i, t, :], X_OT[i, t, :]) for i in range(num_trajectories)) / num_trajectories
         else:
-            term1 = np.zeros((d,d))
+            # term1 = np.zeros((d,d))
             # for i in range(num_trajectories):
             #     for j in range(num_trajectories):
             #         # print(X_t1[i].shape)
-            #         term1[0,0] += p[i,j]* (X_t1[i] - X_t[j]) * X_t[j]
-            term1 = (X_t1 - X_t).T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
+            #         term1[0,0] += p[j,i]* (X_t1[i] - X_t[j]) * X_t[j]
+            term1 = X_t1.T @ p @ X_t -X_t.T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
             fit_mean, fit_cov = utils.estimate_gaussian_marginal(X_t)
             # print(X_t.T.shape)
             term2 = sum(np.dot(X_t.T, X_t)  for i in range(num_trajectories)) / num_trajectories

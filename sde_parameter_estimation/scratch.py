@@ -13,7 +13,8 @@ if __name__ == "__main__":
     num_steps_truncate = 50
     N_truncate = 100
     N_plot = 1
-    filename = "seed-2_X0-none_d-1_n_sdes-10_dt-0.02_N-100_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    A_biases, G_biases = [], []
+    filename = "unkilled_seed-5_X0-none_d-1_n_sdes-10_dt-0.02_N-100_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
     for idx in range(10):
     # idx = 2
@@ -49,12 +50,18 @@ if __name__ == "__main__":
         A_OT, X_OT = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=0, return_OT_traj = True, use_raw_avg=raw_avg)#estimate_A_exp(X_OT, dt)
         GG_T_OT = estimate_GGT(X_OT, T)
         print(f'OT estimated A:', A_OT)
-        print(f'A diff:', (A_OT - A_trues[idx]))
+        A_bias = (A_OT - A_trues[idx])[0][0]
+        A_biases.append(A_bias)
+        print(f'A diff:', A_bias)
         print(f'MSE OT:', np.mean((A_OT - A_trues[idx]) ** 2))
         print(f'OT estimated GGT:', GG_T_OT)
-        print(f'G diff:', (GG_T_OT - G_trues[idx] @G_trues[idx].T))
-        for j in range(N_plot):
-            plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
+        G_bias = (GG_T_OT - G_trues[idx] @G_trues[idx].T)[0][0]
+        G_biases.append(G_bias)
+        print(f'G diff:', G_bias)
+        # for j in range(N_plot):
+        #     plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
+    print('A biases:', A_biases)
+    print('G biases:', G_biases)
 
 
 

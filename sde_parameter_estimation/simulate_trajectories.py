@@ -44,7 +44,8 @@ def create_measurement_data(args, base_params, ablation_param):
             A_trues.append(utils.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization']))
             G_trues.append(utils.initialize_diffusion(base_params['d'], initialization_type=base_params['diffusion_initialization'],
                                            diffusion_scale=base_params['diffusion_scale']))
-            maximal_X_measured_list.append(multiple_ou_trajectories(max_num_trajectories, base_params['d'], max_T, min_dt, A_trues[-1], G_trues[-1], X0 = base_params['X0']))
+            maximal_X_measured_list.append(true_multi_ou_process(max_num_trajectories,  base_params['d'], max_T, base_params['dt_EM'], min_dt, A_trues[-1], G_trues[-1], X0 = base_params['X0']))
+            # maximal_X_measured_list.append(multiple_ou_trajectories(max_num_trajectories, base_params['d'], max_T, min_dt, A_trues[-1], G_trues[-1], X0 = base_params['X0']))
             filename = f'unkilled_seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}_N-{max_num_trajectories}_T-{max_T}'
 
     utils.save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt)
@@ -102,6 +103,40 @@ def ou_process(T, dt, A, G, X0):
         X[t] = X[t - 1] + dt * (A.dot(X[t - 1])) + G.dot(dW[t])
 
     return X
+
+def true_multi_ou_process(num_trajectories, d, T, dt_EM, dt, A, G, X0=None):
+    '''
+    Models measurements of cell trajectories, such that cells don't die.
+    We construct the ou_process by dt_EM and then just pick points from that where they are at i * dt position (T/ dt) of them.
+    Trajectories are generated independently from each other. dt should be some number * dt-EM.
+    Args:
+        num_trajectories: number of trajectories
+        d: dimension of process
+        T: Total time period
+        dt_EM: discretization time step used for simulating the raw cell trajectories
+        dt: discretization time step of the measurements
+        A (numpy.ndarray): Drift matrix.
+        G (numpy.ndarray): Variance matrix.
+        X0 (numpy.ndarray): Initial value.
+
+    Returns:
+    X_measured
+
+    '''
+    n_measured_times = int(T / dt)
+    X_measured = np.zeros((num_trajectories, n_measured_times, d))
+    rate = int(dt/ dt_EM)
+    for n in range(num_trajectories):
+        if X0 is None:
+            # Generate a new random initial value for each trajectory
+            X0_ = np.random.randn(d)
+        else:
+            X0_ = X0
+        X_true = ou_process(T, dt_EM, A,G, X0_)
+
+        for i in range(n_measured_times):
+            X_measured[n, i, :] = X_true[i* rate, :]
+    return X_measured
 
 def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_EM, dt, A, G, X0=None):
     '''
