@@ -4,8 +4,8 @@
 T_VALUES="1.0"
 DT_VALUES="0.02"
 NUM_TRAJECTORIES_VALUES="1000"
-D_VALUES="1 2 3 5 10 20 30 40 50"  # Ensure spaces are used as delimiters
-
+D_VALUES="1 2 3 5 10"  # Ensure spaces are used as delimiters
+X0_inits="none"
 
 # Loop over each parameter combination
 for d in $D_VALUES
@@ -14,29 +14,32 @@ do
     do
         for DT in $DT_VALUES
         do
-            for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+            for X0 in $X0_inits
             do
-                echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
-                python main.py \
-                    --master_seed=2 \
-                    --d=$d \
-                    --simulation_mode='cell_death' \
-                    --dt_em=0.001 \
-                    --n_sdes=50 \
-                    --fixed_X0='none' \
-                    --drift_initialization='negative_eigenvalue' \
-                    --diffusion_initialization='scaled_identity' \
-                    --diffusion_scale=0.1 \
-                    --dt=$DT \
-                    --num_trajectories=$NUM_TRAJ \
-                    --T=$T \
-                    --entropy_reg=0.01 \
-                    --n_iterations=1 \
-                    --ablation_variable_name='num_trajectories' \
-                    --ablation_values='25, 50, 100, 250, 500, 1000' \
-                    --methods OT 'Trajectory' \
-                    --save_results=True
-                echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+                for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+                do
+                    echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+                    python main.py \
+                        --master_seed=2 \
+                        --d=$d \
+                        --simulation_mode='unkilled' \
+                        --dt_em=0.001 \
+                        --n_sdes=50 \
+                        --fixed_X0=$X0 \
+                        --drift_initialization='negative_eigenvalue' \
+                        --diffusion_initialization='scaled_identity' \
+                        --diffusion_scale=0.1 \
+                        --dt=$DT \
+                        --num_trajectories=$NUM_TRAJ \
+                        --T=$T \
+                        --entropy_reg=0.01 \
+                        --n_iterations=1 \
+                        --ablation_variable_name='dt' \
+                        --ablation_values='0.001, 0.002, 0.005, 0.01, 0.02' \
+                        --methods OT 'OT reg' 'Trajectory' \
+                        --save_results=True
+                    echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ"
+                done
             done
         done
     done

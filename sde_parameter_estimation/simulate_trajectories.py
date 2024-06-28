@@ -28,6 +28,7 @@ def create_measurement_data(args, base_params, ablation_param):
         print(f"There is already saved measurement data under {filepath}. ")
         return filepath
     if args.simulation_mode == 'cell_death':
+        print('generating trajectories from killed cells')
         with ProcessPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(generate_sde_data_cell_measurement, i, max_num_trajectories, max_T, min_dt,
                                        base_params): i for i in range(base_params['n_sdes'])}
@@ -62,19 +63,23 @@ def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T,
     n_measured_times = int(max_T / min_dt)
     X_measured = np.zeros((max_num_trajectories, n_measured_times, d))
 
-
     for i in range(n_measured_times):
         for n in range(max_num_trajectories):
+            if isinstance(X0, np.ndarray):
+                X0_ = X0
+            if X0 is None or X0 == 'intermediate' and i == 0:
+                X0_ = np.random.randn(d)
             if i == 0:
-                if X0 is None:
-                    X0_ = np.random.randn(d)
-                else:
-                    X0_ = X0
                 X_measured[n, 0, :] = X0_
             else:
+                # cell trajectory will terminate at i*dt
                 measured_T = i * min_dt
-                # cell trajectory terminating at i*dt
-                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X_measured[n, 0, :])[-1]
+                # use consistent X0s across the measured times
+                if X0 == 'intermediate':
+                    X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X_measured[n, 0, :])[-1]
+                else:
+                    # cell trajectory terminating at i*dt
+                    X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
 
 def ou_process(T, dt, A, G, X0):

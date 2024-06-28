@@ -67,6 +67,9 @@ def initialize_X0(fixed_X0, d):
     if fixed_X0 == 'none':
         print('we will have random X0 for each trajectory')
         return None
+    if fixed_X0 == 'intermediate':
+        print('the trajectories measured at each time will start at the same random set of X0s ')
+        return 'intermediate'
     elif fixed_X0 == 'ones':
         print('each X0 will start at (1,...,1)')
         return np.ones(d)
@@ -198,7 +201,7 @@ def preprocess_measured_data(maximal_X_measured_list, ablation_values, max_num_t
         if args.ablation_variable_name == 'dt':
             # loop over each ablation value
             for dt in ablation_values:
-                num_steps = int(args.T / args.dt)
+                num_steps = int(args.T / min_dt)
                 step_ratio = int(dt / min_dt)
                 X_measured_ablation_dict[dt] = [maximal_X_measured[:args.num_trajectories, :num_steps:step_ratio, :] for maximal_X_measured in
                                                 maximal_X_measured_list]
@@ -210,23 +213,6 @@ def preprocess_measured_data(maximal_X_measured_list, ablation_values, max_num_t
                                                       for maximal_X_measured in
                                                       maximal_X_measured_list]
         return X_measured_list
-
-
-
-def find_max_params(args, min_dt):
-    directory = 'Measurement_data'
-    pattern = f'seed-{args.master_seed}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
-    existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
-
-    # Check each file to see if it meets the conditions
-    for filename in existing_files:
-        # Extract parts from the filename, assuming a specific naming convention
-        parts = filename.replace('.pkl', '').split('_')
-        # Example filename: "seed-0_d-3_n_sdes-10_dt-0.02_N-50_T-1.0"
-        num_trajectories = int(parts[5].split('-')[1])
-        T = float(parts[6].split('-')[1])
-    return num_trajectories, T
-
 
 def find_existing_data(args, max_num_trajectories, max_T, min_dt, simulation_mode = 'cell_death'):
     directory = 'Measurement_data'

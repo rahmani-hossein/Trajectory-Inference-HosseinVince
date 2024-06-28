@@ -484,6 +484,9 @@ def plot_comparison(X, X_OT, X_OT_reg, trajectory_index=0):
     plt.show()
 
 
+
+
+
 def plot_fuck(X, X_shuffled, trajectory_index=0):
     """
     Plot the true trajectory vs. OT-predicted trajectories for different entropy regularizations.
@@ -497,16 +500,17 @@ def plot_fuck(X, X_shuffled, trajectory_index=0):
     num_time_steps, d = X.shape[1], X.shape[2]
 
     plt.figure(figsize=(10, 6))
+
+
     for dim in range(d):
-        plt.subplot(d, 1, dim + 1)
         plt.plot(np.arange(num_time_steps), X[trajectory_index, :, dim], 'k-',
-                 label='True Trajectory' if dim == 0 else "")
+                 label=f'True Trajectory Dim {dim}' if dim == 0 else "")
         plt.plot(np.arange(num_time_steps), X_shuffled[trajectory_index, :, dim], 'r--',
                  label='shuffled' if dim == 0 else "")
-        plt.xlabel('Time Step')
-        plt.ylabel(f'Trajectory Value (Dim {dim + 1})')
-        plt.title(f'Trajectory {trajectory_index}, Dimension {dim + 1}')
+
         if dim == 0:
             plt.legend()
+    plt.xlabel('Time Step')
+    plt.ylabel(f'Trajectory Value')
     plt.tight_layout()
     plt.show()

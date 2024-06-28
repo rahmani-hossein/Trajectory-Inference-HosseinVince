@@ -1,26 +1,42 @@
 import matplotlib as plt
 from parameter_estimation import *
 import utils
+from plots import plot_trajectories
 import pickle
 from simulate_trajectories import *
 
 if __name__ == "__main__":
     # Example usage:
     N = 1000
-    d=1
+    n_sdes = 50
+    d=5
     T=1
     dt=0.02
     num_steps_truncate = 50
-    N_truncate = 5
+    N_truncate = 10
     N_plot = 1
     A_biases, G_biases = [], []
-    filename = "unkilled_seed-2_X0-none_d-1_n_sdes-10_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+
+    filename = f"seed-2_X0-none_d-{d}_n_sdes-{n_sdes}_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
-    for idx in range(10):
+    for idx in range(n_sdes):
     # idx = 2
         X = maximal_X_measured_list[idx][:N_truncate, :num_steps_truncate, :]
-        print(X[1])
+        # for j in range(10):
+        #     plot_trajectories(X[j], T, dt)
+        A = A_trues[idx]
+        G = G_trues[idx]
+        X0 =X[0, 0, :]
         print('true A:', A_trues[idx])
+        print('X0:', X0)
+        for i in range(2):
+            plot_trajectories(X[i], T, dt)
+            # X = ou_process(T, dt, A, G, X0)
+            # plot_trajectories(X, T, dt)
+
+
+
+
         print('true GGT:', G_trues[idx]@np.transpose(G_trues[idx]))
         # plot_trajectories(X[0], T, dt)
         dt = 0.02
@@ -31,8 +47,8 @@ if __name__ == "__main__":
         shuffled_samples = extract_marginal_samples(X, shuffle=True)
         for i in range(num_steps_truncate):
             shuffled_X[:, i, :] = shuffled_samples[i]
-        # for j in range(N_plot):
-        #     plot_fuck(X, shuffled_X, trajectory_index=j)
+        for j in range(N_plot):
+            plot_fuck(X, shuffled_X, trajectory_index=j)
         #
         # print(X)
         # print(shuffled_X)
