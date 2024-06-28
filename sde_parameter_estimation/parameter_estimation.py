@@ -54,10 +54,10 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=False, entropy_reg=0, GGT=None)
         elif method == 'OT':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None,
-                                                          n_iterations=n_iterations)
+                                                          n_iterations=n_iterations, use_raw_avg = True) # raw_avg test (T/F are equivalent)
         elif method == 'OT reg':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg,
-                                                          GGT=None, n_iterations=n_iterations)
+                                                          GGT=None, n_iterations=n_iterations, use_raw_avg = False) # raw_avg test (T/F are equivalent)
         elif method == 'Classical':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=False, GGT=None)
         else:
@@ -66,7 +66,7 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
     return A_estimations
 
 
-def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1):
+def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, use_raw_avg=True):
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
@@ -89,11 +89,11 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
             its = 1
             # initial estimate for A
             # the expectations are estimated using conditional densities from OT
-            A_0 = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None)
+            A_0 = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None, use_raw_avg=use_raw_avg)
             A = A_0
             # print(f'estimated A for iteration 1:', A)
             while its < n_iterations:
-                A = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=A)
+                A = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=A, use_raw_avg=use_raw_avg)
                 # else:
                 #     X_predict = simulate_trajectories.generate_maximal_dataset_cell_measurement_death(num_trajectories, T, dt, d, dt_EM, A, G,
                 #                                                     X0=None)
@@ -170,15 +170,14 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, us
                         range(num_trajectories)) / num_trajectories
             term2 = sum(np.outer(X_OT[i, t, :], X_OT[i, t, :]) for i in range(num_trajectories)) / num_trajectories
         else:
-            # term1 = np.zeros((d,d))
-            # for i in range(num_trajectories):
-            #     for j in range(num_trajectories):
-            #         # print(X_t1[i].shape)
-            #         term1[0,0] += p[j,i]* (X_t1[i] - X_t[j]) * X_t[j]
-            term1 = X_t1.T @ p @ X_t -X_t.T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
-            fit_mean, fit_cov = utils.estimate_gaussian_marginal(X_t)
+            term1 = np.zeros((d, d))
+            for i in range(num_trajectories):
+                for j in range(num_trajectories):
+                    term1 += p[i, j] * np.outer(X_t1[j] - X_t[i], X_t[i])
+            term2 = np.dot(X_t.T, X_t) / num_trajectories
+            # bad code: term1 = X_t1.T @ p @ X_t -X_t.T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
+            # fit_mean, fit_cov = utils.estimate_gaussian_marginal(X_t)
             # print(X_t.T.shape)
-            term2 = sum(np.dot(X_t.T, X_t)  for i in range(num_trajectories)) / num_trajectories
             # term2 = utils.gaussian_outer_product(fit_mean, fit_cov)
         sum_Edxt_xtT += term1
         sum_Ext_xtT += term2
