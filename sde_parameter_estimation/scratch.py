@@ -1,6 +1,93 @@
 import matplotlib as plt
 from parameter_estimation import *
+import utils
+from plots import plot_trajectories
+import pickle
 from simulate_trajectories import *
+
+if __name__ == "__main__":
+    # Example usage:
+    N = 1000
+    n_sdes = 50
+    d=5
+    T=1
+    dt=0.02
+    num_steps_truncate = 50
+    N_truncate = 10
+    N_plot = 1
+    A_biases, G_biases = [], []
+
+    filename = f"seed-2_X0-none_d-{d}_n_sdes-{n_sdes}_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
+    for idx in range(n_sdes):
+    # idx = 2
+        X = maximal_X_measured_list[idx][:N_truncate, :num_steps_truncate, :]
+        # for j in range(10):
+        #     plot_trajectories(X[j], T, dt)
+        A = A_trues[idx]
+        G = G_trues[idx]
+        X0 =X[0, 0, :]
+        print('true A:', A_trues[idx])
+        print('X0:', X0)
+        for i in range(2):
+            plot_trajectories(X[i], T, dt)
+            # X = ou_process(T, dt, A, G, X0)
+            # plot_trajectories(X, T, dt)
+
+
+
+
+        print('true GGT:', G_trues[idx]@np.transpose(G_trues[idx]))
+        # plot_trajectories(X[0], T, dt)
+        dt = 0.02
+        shuffle = True
+        reg = 0.01
+        shuffled_X = np.zeros((N_truncate, num_steps_truncate, d))
+        # Fill shuffled_X with shuffled marginal samples
+        shuffled_samples = extract_marginal_samples(X, shuffle=True)
+        for i in range(num_steps_truncate):
+            shuffled_X[:, i, :] = shuffled_samples[i]
+        for j in range(N_plot):
+            plot_fuck(X, shuffled_X, trajectory_index=j)
+        #
+        # print(X)
+        # print(shuffled_X)
+
+        # X_OT = estimate_next_step_OT(X, dt, entropy_reg=0, shuffle = shuffle)
+        # X_OT_reg = estimate_next_step_OT(X, dt, entropy_reg=reg, shuffle= shuffle)
+        raw_avg = True
+        A_OT_reg, X_OT_reg = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=reg, return_OT_traj = True, use_raw_avg=raw_avg)
+        GG_T_OT_reg = estimate_GGT(X_OT_reg, T)
+        print(f'OT reg (reg={reg}) estimated A:', A_OT_reg)
+        print(f'A diff:', (A_OT_reg - A_trues[idx]))
+        print(f'MSE OT reg:', np.mean((A_OT_reg - A_trues[idx]) ** 2))
+        print(f'OT reg (reg={reg}) estimated GGT:', GG_T_OT_reg)
+        print(f'G diff:', (GG_T_OT_reg - G_trues[idx] @G_trues[idx].T  ))
+        A_OT, X_OT = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=0, return_OT_traj = True, use_raw_avg=raw_avg)#estimate_A_exp(X_OT, dt)
+        GG_T_OT = estimate_GGT(X_OT, T)
+        print(f'OT estimated A:', A_OT)
+        A_bias = (A_OT - A_trues[idx])[0][0]
+        A_biases.append(A_bias)
+        print(f'A diff:', A_bias)
+        print(f'MSE OT:', np.mean((A_OT - A_trues[idx]) ** 2))
+        print(f'OT estimated GGT:', GG_T_OT)
+        G_bias = (GG_T_OT - G_trues[idx] @G_trues[idx].T)[0][0]
+        G_biases.append(G_bias)
+        print(f'G diff:', G_bias)
+        for j in range(N_plot):
+            plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
+    print('A biases:', A_biases)
+    print('G biases:', G_biases)
+
+
+
+
+
+    # filename = "seed-0_d-2_n_sdes-10_dt-0.02_N-1000_T-1.0"
+    # loaded_data = utils.load_measurement_data(filename)
+
+
+
 
 def master_sde_simulation_and_estimation(noise_type, T, dt, num_trajectories, num_sdes, d, m,
                                          A_initialization, G_initialization,
@@ -225,24 +312,24 @@ def compute_integrals(X, dt):
     integral_X2dt = np.sum(X[:, :-1] ** 2 * dt, axis=1)
     return integral_XdW, integral_X2dt
 
-if __name__ == "__main__":
-    # Simulate X_t
-    X = simulate_X_t(A, G, T, N, num_simulations)
-
-    # Compute integrals
-    integral_XdW, integral_X2dt = compute_integrals(X, dt)
-
-    # Compute Pearson correlation coefficient as independence score
-    correlation_coefficient, _ = pearsonr(integral_XdW, integral_X2dt)
-
-    print(f"Pearson correlation coefficient: {correlation_coefficient}")
-
-    # Plot the results
-    plt.scatter(integral_XdW, integral_X2dt)
-    plt.xlabel(r'$\int_0^T X_t \, dW_t$')
-    plt.ylabel(r'$\int_0^T X_t^2 \, dt$')
-    plt.title('Scatter plot of the two integrals')
-    plt.show()
+# if __name__ == "__main__":
+#     # Simulate X_t
+#     X = simulate_X_t(A, G, T, N, num_simulations)
+#
+#     # Compute integrals
+#     integral_XdW, integral_X2dt = compute_integrals(X, dt)
+#
+#     # Compute Pearson correlation coefficient as independence score
+#     correlation_coefficient, _ = pearsonr(integral_XdW, integral_X2dt)
+#
+#     print(f"Pearson correlation coefficient: {correlation_coefficient}")
+#
+#     # Plot the results
+#     plt.scatter(integral_XdW, integral_X2dt)
+#     plt.xlabel(r'$\int_0^T X_t \, dW_t$')
+#     plt.ylabel(r'$\int_0^T X_t^2 \, dt$')
+#     plt.title('Scatter plot of the two integrals')
+#     plt.show()
 
 # if __name__ == "__main__":
 #     # Define variables
