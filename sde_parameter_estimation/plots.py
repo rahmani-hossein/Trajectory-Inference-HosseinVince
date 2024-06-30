@@ -22,6 +22,7 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
     - save_plot: Boolean indicating whether to save the plot or not. Defaults to True.
     """
     fmt_list = ['-^', '-o', '--', '-s', '-d', '-x', '-*']
+    fig, ax = plt.subplots()  # Create a figure and an axis
     for method_name, mse_score, std_err, fmt in zip(list_method_labels, list_mse_scores, list_std_errs, fmt_list):
         # if method_name == 'OT':
         #     method_name = 'OT reg (1st iteration)'
@@ -29,6 +30,16 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
         #     method_name = 'OT reg (2nd iteration)'
         plt.errorbar(ablation_values, mse_score, yerr=std_err, fmt=fmt, label=method_name)
     plt.xlabel(ablation_variable_name)
+    # Get the current y-ticks
+    yticks = ax.get_yticks()
+
+    # # Add the y-tick for MSE = 1 if it's not already in the list
+    # if 1 not in yticks:
+    #     yticks = np.append(yticks, 1)
+    #     yticks.sort()
+
+    # Set the y-ticks
+    ax.set_yticks(yticks)
     plt.ylabel('Mean Squared Error (MSE)')
     plt.title(f'Parameter Estimation on {d}-dimensional Stationary Linear Additive Noise SDE')
     plt.legend()
@@ -42,7 +53,7 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
         filepath = os.path.join('../MSE_plots', plot_filename)
         plt.savefig(filepath)
 
-    # Show plot
+    # # Show plot
     # plt.show()
 
 def plot_trajectories(X, T, dt, save_file = False):

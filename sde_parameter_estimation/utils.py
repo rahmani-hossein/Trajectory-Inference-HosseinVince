@@ -354,4 +354,8 @@ def load_experiment_results(filename):
     filepath = os.path.join('../MSE_logs', filename)
     with open(filepath, 'r') as f:
         data = json.load(f)
-    return data['variables'], data['results']
+    print(data['base'])
+    print(data['ablation'])
+    print(data['estimation'])
+    print(data['results'])
+    return data

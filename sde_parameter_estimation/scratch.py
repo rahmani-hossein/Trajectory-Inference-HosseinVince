@@ -13,11 +13,12 @@ if __name__ == "__main__":
     T=1
     dt=0.02
     num_steps_truncate = 50
-    N_truncate = 10
-    N_plot = 1
+    N_truncate = 20
+    N_plot = 5
     A_biases, G_biases = [], []
 
-    filename = f"seed-2_X0-none_d-{d}_n_sdes-{n_sdes}_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+
+    filename = f"unkilled_seed-2_X0-none_d-{d}_n_sdes-{n_sdes}_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
     for idx in range(n_sdes):
     # idx = 2
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         X0 =X[0, 0, :]
         print('true A:', A_trues[idx])
         print('X0:', X0)
-        for i in range(2):
+        for i in range(N_plot):
             plot_trajectories(X[i], T, dt)
             # X = ou_process(T, dt, A, G, X0)
             # plot_trajectories(X, T, dt)
@@ -47,8 +48,8 @@ if __name__ == "__main__":
         shuffled_samples = extract_marginal_samples(X, shuffle=True)
         for i in range(num_steps_truncate):
             shuffled_X[:, i, :] = shuffled_samples[i]
-        for j in range(N_plot):
-            plot_fuck(X, shuffled_X, trajectory_index=j)
+        # for j in range(N_plot):
+        #     plot_fuck(X, shuffled_X, trajectory_index=j)
         #
         # print(X)
         # print(shuffled_X)

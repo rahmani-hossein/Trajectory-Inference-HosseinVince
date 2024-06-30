@@ -53,11 +53,11 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
         if method == 'Trajectory':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=False, entropy_reg=0, GGT=None)
         elif method == 'OT':
-            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None,
-                                                          n_iterations=n_iterations, use_raw_avg = True) # raw_avg test (T/F are equivalent)
+            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg*dt, GGT=None,
+                                                          n_iterations=n_iterations, use_raw_avg=True) # raw_avg test (T/F are equivalent)
         elif method == 'OT reg':
-            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg,
-                                                          GGT=None, n_iterations=n_iterations, use_raw_avg = False) # raw_avg test (T/F are equivalent)
+            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg*dt,
+                                                          GGT=None, n_iterations=n_iterations, use_raw_avg=False) # raw_avg test (T/F are equivalent)
         elif method == 'Classical':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=False, GGT=None)
         else:
@@ -66,7 +66,7 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
     return A_estimations
 
 
-def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, use_raw_avg=True):
+def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, use_raw_avg=False):
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
@@ -129,63 +129,69 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, us
 
     sum_Edxt_xtT = np.zeros((d, d))
     sum_Ext_xtT = np.zeros((d, d))
+    try:
+        for t in range(num_time_steps - 1):
+            # extract random samples of the process
+            if t == 0 or not use_raw_avg:
+                X_t = marginal_samples[t]
+                X_t1 = marginal_samples[t + 1]
+            else:
+                # if we want to build on the trajectory ordering that OT picks and treat them as
+                # trajectories for raw averages
+                X_t = X_t1_OT
+                X_t1 = marginal_samples[t + 1]  # marginal_samples[t + 1]
 
-    for t in range(num_time_steps - 1):
-        # extract random samples of the process
-        if t == 0 or not use_raw_avg:
-            X_t = marginal_samples[t]
-            X_t1 = marginal_samples[t + 1]
+            # Calculate the cost matrix
+            if cur_est_A is None:
+                # optimize over empirical marginal transition
+                M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+            else:
+                # optimize over empirical marginal transition given current estimated A
+                M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
+
+            # Solve optimal transport problem
+            if entropy_reg > 0:
+                # max_iter = 10000  # Increase the maximum number of iterations
+                # numItermax=max_iter, stopThr=thresh
+                # thresh = 1e-6  # Decrease the threshold
+                p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M / M.max(),
+                                reg=entropy_reg, verbose=False)
+            else:
+                p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
+
+            # use the optimal transport matched trajectories if there is no regularization
+            if use_raw_avg:
+
+                # Normalize each row of the transport plan to sum to 1
+                p_normalized = normalize_rows(p)
+                # Calculate X_t1_OT predictions
+                X_t1_OT = np.dot(p_normalized, X_t1)
+                X_OT[:, t + 1, :] = X_t1_OT
+                term1 = sum(np.outer(X_OT[i, t + 1, :] - X_OT[i, t, :], X_OT[i, t, :]) for i in
+                            range(num_trajectories)) / num_trajectories
+                term2 = sum(np.outer(X_OT[i, t, :], X_OT[i, t, :]) for i in range(num_trajectories)) / num_trajectories
+            else:
+                term1 = np.zeros((d, d))
+                for i in range(num_trajectories):
+                    for j in range(num_trajectories):
+                        term1 += p[i, j] * np.outer(X_t1[j] - X_t[i], X_t[i])
+                term2 = np.dot(X_t.T, X_t) / num_trajectories
+                # bad code: term1 = X_t1.T @ p @ X_t -X_t.T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
+                # fit_mean, fit_cov = utils.estimate_gaussian_marginal(X_t)
+                # print(X_t.T.shape)
+                # term2 = utils.gaussian_outer_product(fit_mean, fit_cov)
+            sum_Edxt_xtT += term1
+            sum_Ext_xtT += term2
+
+        if return_OT_traj:
+            return np.matmul(sum_Edxt_xtT, np.linalg.pinv(sum_Ext_xtT)) * (1 / dt), X_OT
         else:
-            # if we want to build on the trajectory ordering that OT picks and treat them as
-            # trajectories for raw averages
-            X_t = X_t1_OT
-            X_t1 = marginal_samples[t + 1]  # marginal_samples[t + 1]
-
-        # Calculate the cost matrix
-        if cur_est_A is None:
-            # optimize over empirical marginal transition
-            M = ot.dist(X_t, X_t1, metric='sqeuclidean')
-        else:
-            # optimize over empirical marginal transition given current estimated A
-            M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
-
-        # Solve optimal transport problem
-        if entropy_reg > 0:
-            # max_iter = 10000  # Increase the maximum number of iterations
-            # numItermax=max_iter, stopThr=thresh
-            # thresh = 1e-6  # Decrease the threshold
-            p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M / M.max(),
-                            reg=entropy_reg, verbose=False)
-        else:
-            p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
-
-        # use the optimal transport matched trajectories if there is no regularization
-        if use_raw_avg:
-            # Normalize each row of the transport plan to sum to 1
-            p_normalized = normalize_rows(p)
-            # Calculate X_t1_OT predictions
-            X_t1_OT = np.dot(p_normalized, X_t1)
-            X_OT[:, t + 1, :] = X_t1_OT
-            term1 = sum(np.outer(X_OT[i, t + 1, :] - X_OT[i, t, :], X_OT[i, t, :]) for i in
-                        range(num_trajectories)) / num_trajectories
-            term2 = sum(np.outer(X_OT[i, t, :], X_OT[i, t, :]) for i in range(num_trajectories)) / num_trajectories
-        else:
-            term1 = np.zeros((d, d))
-            for i in range(num_trajectories):
-                for j in range(num_trajectories):
-                    term1 += p[i, j] * np.outer(X_t1[j] - X_t[i], X_t[i])
-            term2 = np.dot(X_t.T, X_t) / num_trajectories
-            # bad code: term1 = X_t1.T @ p @ X_t -X_t.T @ p @ X_t #(X_OT[:, t + 1, :].T @ p @ X_OT[:, t, :] - X_OT[:, t, :].T @ p @ X_OT[:, t, :])
-            # fit_mean, fit_cov = utils.estimate_gaussian_marginal(X_t)
-            # print(X_t.T.shape)
-            # term2 = utils.gaussian_outer_product(fit_mean, fit_cov)
-        sum_Edxt_xtT += term1
-        sum_Ext_xtT += term2
-
-    if return_OT_traj:
-        return np.matmul(sum_Edxt_xtT, np.linalg.pinv(sum_Ext_xtT)) * (1 / dt), X_OT
-    else:
-        return np.matmul(sum_Edxt_xtT, np.linalg.pinv(sum_Ext_xtT)) * (1 / dt)
+            return np.matmul(sum_Edxt_xtT, np.linalg.pinv(sum_Ext_xtT)) * (1 / dt)
+    except np.linalg.LinAlgError:
+        # Handle the SVD did not converge error
+        print("SVD did not converge. Printing entropy_reg and use_raw_avg.")
+        print(entropy_reg, use_raw_avg)
+        return
 
 def estimate_A(trajectories, dt, GGT=None):
     """

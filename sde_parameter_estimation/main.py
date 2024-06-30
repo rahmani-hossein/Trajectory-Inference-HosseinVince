@@ -61,7 +61,7 @@ def main(args):
         A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(measurement_filename)
         print(f'Retrieved previously saved measurements from {measurement_filename}')
 
-    experiment_name = f'two_methods_{args.ablation_variable_name}_from_{measurement_filename}'
+    experiment_name = f'correct_reg_compare_meth_{args.ablation_variable_name}_from_{measurement_filename}'
     measurement_variables = ['T', 'dt', 'num_trajectories']
     parameter_estimation_variables = ['n_iterations', 'entropy_reg']
 
@@ -88,6 +88,7 @@ def main(args):
 
     results = {
         'mse_scores': mean_mse_scores,
+        'std_errs': std_errs
     }
     # plot and save results
     results_filename = f"results_{experiment_name}.json"
