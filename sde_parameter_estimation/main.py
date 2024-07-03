@@ -5,6 +5,20 @@ from parameter_estimation import estimate_A_compare_methods
 import utils
 import plots
 import argparse
+import matplotlib.pyplot as plt
+import torch
+from torch.autograd import grad, Variable
+import autograd
+import copy
+import scipy as sp
+from scipy import stats
+from sklearn import metrics
+import sys
+import ot
+import gwot
+from gwot import models, sim, ts, util
+import gwot.bridgesampling as bs
+from sde_parameter_estimation import parameter_estimation, simulate_trajectories, utils
 
 
 def get_parser():
@@ -12,7 +26,7 @@ def get_parser():
     # parameters for simulation
     parser.add_argument('--measurement_load_file', default=None, help='Load file for SDE measurements')
     parser.add_argument('--master_seed', type=int, default=1, help='Seed for reproducibility')
-    parser.add_argument('--d', default=2, type=int, help='Dimension of the process.')
+    parser.add_argument('--d', default=1, type=int, help='Dimension of the process.')
     parser.add_argument('--simulation_mode', default='cell_death', help='How should the data be simulated? Options: cell_death, unkilled')
     parser.add_argument('--dt_em', default=0.001, type=float, help='Simulation time step.')
     parser.add_argument('--n_sdes', default=10, type=int, help='Number of SDEs to simulate per setting.')

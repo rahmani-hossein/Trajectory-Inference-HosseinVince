@@ -1,9 +1,8 @@
 import numpy as np
 import ot
 from scipy.linalg import expm
-import simulate_trajectories
 from scipy.stats import multivariate_normal
-import utils
+import sde_parameter_estimation.utils
 import matplotlib.pyplot as plt
 import random
 
