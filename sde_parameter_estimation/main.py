@@ -18,18 +18,18 @@ import ot
 import gwot
 from gwot import models, sim, ts, util
 import gwot.bridgesampling as bs
-from sde_parameter_estimation import parameter_estimation, simulate_trajectories, utils
+import parameter_estimation, simulate_trajectories, utils
 
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Run SDE parameter estimation experiments.')
     # parameters for simulation
     parser.add_argument('--measurement_load_file', default=None, help='Load file for SDE measurements')
-    parser.add_argument('--master_seed', type=int, default=1, help='Seed for reproducibility')
+    parser.add_argument('--master_seed', type=int, default=2, help='Seed for reproducibility')
     parser.add_argument('--d', default=1, type=int, help='Dimension of the process.')
     parser.add_argument('--simulation_mode', default='cell_death', help='How should the data be simulated? Options: cell_death, unkilled')
     parser.add_argument('--dt_em', default=0.001, type=float, help='Simulation time step.')
-    parser.add_argument('--n_sdes', default=10, type=int, help='Number of SDEs to simulate per setting.')
+    parser.add_argument('--n_sdes', default=1, type=int, help='Number of SDEs to simulate per setting.')
     parser.add_argument('--fixed_X0', default='none',
                         help='How is each trajectory for a given SDE initialized? Options: none, zero, ones')
     parser.add_argument('--drift_initialization', default='negative_eigenvalue',
@@ -39,7 +39,7 @@ def get_parser():
     parser.add_argument('--diffusion_scale', default=0.1, type=float,
                         help='Scale factor for diffusion matrix initialization.')
     # parameters for measurement
-    parser.add_argument('--dt', default=0.001, type=float, help='Observation time step.')
+    parser.add_argument('--dt', default=0.01, type=float, help='Observation time step.')
     parser.add_argument('--num_trajectories', type = int,  default=1000,
                         help='Number of trajectories per SDE (observations per time step).')
     parser.add_argument('--T', default=1.0, type=float, help='Total length of observation.')
@@ -49,11 +49,12 @@ def get_parser():
     parser.add_argument('--n_iterations', default=1, type=int, help='Number of iterations for "iterative" approach.')
     # experiment parameters
     parser.add_argument('--ablation_variable_name', default='dt', help='name of ablation variable')
-    parser.add_argument('--ablation_values', default='0.1, 0.05, 0.02, 0.01, 0.005, 0.001',
+    parser.add_argument('--ablation_values', default=' 0.1, 0.05, 0.02',
                         help='Comma-separated values for the ablation study.')
-    parser.add_argument('--methods', nargs='+', default=['OT', 'OT reg'], help='List of parameter estimation methods to try')
-    parser.add_argument('--save_results', default=True, help='whether or not to save parameter estimation results')
+    parser.add_argument('--methods', nargs='+', default=['OT reg'], help='List of parameter estimation methods to try')
+    parser.add_argument('--save_results', default=False, help='whether or not to save parameter estimation results')
     return parser
+
 
 
 def main(args):
@@ -75,7 +76,7 @@ def main(args):
         A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(measurement_filename)
         print(f'Retrieved previously saved measurements from {measurement_filename}')
 
-    experiment_name = f'correct_reg_compare_meth_{args.ablation_variable_name}_from_{measurement_filename}'
+    experiment_name = f'tp_{args.ablation_variable_name}_from_{measurement_filename}'
     measurement_variables = ['T', 'dt', 'num_trajectories']
     parameter_estimation_variables = ['n_iterations', 'entropy_reg']
 

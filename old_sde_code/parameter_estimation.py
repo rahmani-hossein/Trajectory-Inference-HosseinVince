@@ -223,3 +223,211 @@ def estimate_A_(trajectories, dt, G):
     # A_hat /= num_trajectories
 
     return A_hat
+
+
+
+def estimate_A(trajectories, dt, GGT=None):
+    """
+    Calculates the closed form estimator A_hat from each of the observed trajectories
+    and averages the estimates at the end.
+
+
+    Parameters:
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+        dt (float): Discretization time step.
+        GGT (optional): the Gram matrix of the diffusion matrix
+
+    Returns:
+        numpy.ndarray: Estimated drift matrix A given the set of trajectories
+    """
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
+    if GGT is None:
+        GGT = np.eye(d)
+    for trajectory in trajectories:
+        # perform the estimate
+        sum_xt_dxt = np.zeros((d, d))
+        sum_xt_xtT = np.zeros((d, d))
+        for t in range(num_steps - 1):
+            xt = trajectory[t]
+            xt_next = trajectory[t + 1]
+            dxt = xt_next - xt
+            sum_xt_dxt += np.outer(dxt, xt)
+            sum_xt_xtT += np.outer(xt, xt)
+        # Accumulating the estimates from all trajectories
+        GGT_inv = np.linalg.inv(GGT)
+        temp1 = np.matmul(GGT, sum_xt_dxt)
+        temp2 = np.matmul(GGT_inv, np.linalg.pinv(sum_xt_xtT))
+        estimator_from_traj = np.matmul(temp1, temp2) * (1 / dt)
+        A_hat += estimator_from_traj
+
+    # Averaging over all trajectories
+    A_hat /= num_trajectories
+
+    return A_hat
+
+def estimate_A_(trajectories, dt, G):
+    """
+    Calculate the closed form estimator A_hat using discrete observed data from multiple trajectories.
+
+    Parameters:
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+        dt (float): Discretization time step.
+
+    Returns:
+        numpy.ndarray: Estimated drift matrix A given the set of trajectories
+    """
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
+    sum_xt_dxt = np.zeros((d, d))
+    sum_xt_xtT = np.zeros((d, d))
+
+    for trajectory in trajectories:
+        # perform the estimate
+        for t in range(num_steps - 1):
+            xt = trajectory[t]
+            xt_next = trajectory[t + 1]
+            dxt = xt_next - xt
+            sum_xt_dxt += np.outer(xt, dxt)
+            sum_xt_xtT += np.outer(xt, xt)
+    # Accumulating the estimates from all trajectories
+    if np.shape(G)[0] > 1:
+        GGT = np.matmul(G, np.transpose(G))
+        GGT_inv = np.linalg.inv(GGT)
+    else:
+        GGT = [1]
+    temp1 = np.matmul(GGT, sum_xt_dxt)
+    temp2 = np.matmul(GGT_inv, np.linalg.inv(sum_xt_xtT))
+    estimator_from_traj = np.matmul(temp1, temp2) * (1 / dt)
+    A_hat += estimator_from_traj
+    #
+    # # Averaging over all trajectories
+    # A_hat /= num_trajectories
+
+    return A_hat
+
+def estimate_A_1D(trajectories, dt):
+    A_hat = 0
+    num_trajectories, num_steps, d = trajectories.shape
+    for trajectory in trajectories:
+        # perform the estimate
+        sum_xt_dxt = 0
+        sum_xt_xtT = 0
+        for t in range(num_steps - 1):
+            xt = trajectory[t]
+            xt_next = trajectory[t + 1]
+            dxt = xt_next - xt
+            sum_xt_dxt += xt * dxt
+            sum_xt_xtT += xt * xt * dt
+        # Accumulating the estimates from all trajectories
+        estimator_from_traj = sum_xt_dxt / sum_xt_xtT
+        A_hat += estimator_from_traj
+
+    # Averaging over all trajectories
+    A_hat /= num_trajectories
+
+    return A_hat
+
+def estimate_A_exp_alt(trajectories, dt, GGT=None, pinv = False):
+    """
+    Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
+
+    Parameters:
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+        dt (float): Discretization time step.
+        GGT (optional): the Gram matrix of the diffusion matrix
+
+    Returns:
+        numpy.ndarray: Estimated drift matrix A given the set of trajectories
+    """
+    num_trajectories, num_steps, d = trajectories.shape
+    A_hat = np.zeros((d, d))
+
+    if GGT is None:
+        GGT = np.eye(d)  # Use identity if no GGT provided
+
+    # Initialize cumulative sums
+    sum_Edxt_Ext = np.zeros((d, d))
+    sum_Ext_ExtT = np.zeros((d, d))
+
+    for t in range(num_steps - 1):
+        sum_dxt_xt = np.zeros((d, d))
+        sum_xt = np.zeros((d, 1))
+        sum_xtT = np.zeros((1, d))
+        for trajectory in trajectories:
+            sum_dxt_xt += np.outer(trajectory[t + 1] - trajectory[t], trajectory[t])
+            sum_xt += np.reshape(trajectory[t], (d, 1))
+            sum_xtT += np.transpose(trajectory[t])
+        Ext = sum_xt / num_trajectories
+        ExtT = sum_xtT / num_trajectories
+        sum_Edxt_Ext += sum_dxt_xt / num_trajectories
+        sum_Ext_ExtT += np.matmul(Ext, ExtT) / num_trajectories
+        if pinv:
+            return np.matmul(sum_Edxt_Ext, np.linalg.pinv(sum_Ext_ExtT)) * (1 / dt)
+        else:
+            return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
+
+# # added july 5: probably duplicated
+#
+#
+# def estimate_A_(trajectories, dt, G):
+#     """
+#     Calculate the closed form estimator A_hat using discrete observed data from multiple trajectories.
+#
+#     Parameters:
+#         trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+#         dt (float): Discretization time step.
+#
+#     Returns:
+#         numpy.ndarray: Estimated drift matrix A given the set of trajectories
+#     """
+#     num_trajectories, num_steps, d = trajectories.shape
+#     A_hat = np.zeros((d, d))
+#     sum_xt_dxt = np.zeros((d, d))
+#     sum_xt_xtT = np.zeros((d, d))
+#
+#     for trajectory in trajectories:
+#         # perform the estimate
+#         for t in range(num_steps - 1):
+#             xt = trajectory[t]
+#             xt_next = trajectory[t + 1]
+#             dxt = xt_next - xt
+#             sum_xt_dxt += np.outer(xt, dxt)
+#             sum_xt_xtT += np.outer(xt, xt)
+#     # Accumulating the estimates from all trajectories
+#     if np.shape(G)[0] > 1:
+#         GGT = np.matmul(G, np.transpose(G))
+#         GGT_inv = np.linalg.inv(GGT)
+#     else:
+#         GGT = [1]
+#     temp1 = np.matmul(GGT, sum_xt_dxt)
+#     temp2 = np.matmul(GGT_inv, np.linalg.inv(sum_xt_xtT))
+#     estimator_from_traj = np.matmul(temp1, temp2) * (1 / dt)
+#     A_hat += estimator_from_traj
+#     #
+#     # # Averaging over all trajectories
+#     # A_hat /= num_trajectories
+#
+#     return A_hat
+#
+# def estimate_A_1D(trajectories, dt):
+#     A_hat = 0
+#     num_trajectories, num_steps, d = trajectories.shape
+#     for trajectory in trajectories:
+#         # perform the estimate
+#         sum_xt_dxt = 0
+#         sum_xt_xtT = 0
+#         for t in range(num_steps - 1):
+#             xt = trajectory[t]
+#             xt_next = trajectory[t + 1]
+#             dxt = xt_next - xt
+#             sum_xt_dxt += xt * dxt
+#             sum_xt_xtT += xt * xt * dt
+#         # Accumulating the estimates from all trajectories
+#         estimator_from_traj = sum_xt_dxt / sum_xt_xtT
+#         A_hat += estimator_from_traj
+#
+#     # Averaging over all trajectories
+#     A_hat /= num_trajectories
+#
+#     return A_hat

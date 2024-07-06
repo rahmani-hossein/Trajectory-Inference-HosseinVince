@@ -217,22 +217,27 @@ def preprocess_measured_data(maximal_X_measured_list, ablation_values, max_num_t
 def find_existing_data(args, max_num_trajectories, max_T, min_dt, simulation_mode = 'cell_death'):
     directory = 'Measurement_data'
     if simulation_mode == 'cell_death':
-        pattern = f'seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
+        pattern = f'seed-{args.master_seed}_X0-{args.fixed_X0}'
         existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
         offset = 0
     elif simulation_mode == 'unkilled':
-        pattern = f'unkilled_seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}'
+        pattern = f'unkilled_seed-{args.master_seed}_X0-{args.fixed_X0}'
         existing_files = [f for f in os.listdir(directory) if f.startswith(pattern)]
         offset = 1
     # Check each file to see if it meets the conditions
     for filename in existing_files:
         # Extract parts from the filename, assuming a specific naming convention
         parts = filename.replace('.pkl', '').split('_')
+        d = int(parts[2 + offset].split('-')[1])
+        n_sdes = int(parts[4 + offset].split('-')[1])
+        dt = float(parts[5 + offset].split('-')[1])
         # Example filename: "seed-0_d-3_n_sdes-10_dt-0.02_N-50_T-1.0"
-        num_trajectories = int(parts[6+offset].split('-')[1])
-        T = float(parts[7+offset].split('-')[1])
-
-        if num_trajectories >= max_num_trajectories and T >= max_T:
+        num_trajectories = int(parts[6 + offset].split('-')[1])
+        T = float(parts[7 + offset].split('-')[1])
+        if d == args.d and n_sdes >= args.n_sdes and num_trajectories >= max_num_trajectories and T >= max_T and dt <= min_dt:
+            print('dt from filename:', dt )
+            print('min dt:', min_dt)
+            exit
             return os.path.join(filename)
 
     return None
@@ -289,7 +294,7 @@ def save_detailed_experiment_data(filename, data):
         pickle.dump(data, f)
 
 
-def load_measurement_data(filename):
+def load_measurement_data(filename, verbose = False):
     '''
     Load measurement data and parameters from a file.
 
@@ -314,10 +319,11 @@ def load_measurement_data(filename):
     print('Base parameters of saved data')
     print(base_params)
     A_trues = data.get('A_trues', [])
-    i = 0
-    for A in A_trues:
-        print(f'A from SDE {i}: ', A)
-        i += 1
+    if verbose:
+        i = 0
+        for A in A_trues:
+            print(f'A from SDE {i}: ', A)
+            i += 1
     G_trues = data.get('G_trues', [])
     maximal_X_measured_list = data.get('maximal_X_measured', [])
     return A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt
@@ -347,7 +353,7 @@ def save_experiment_results_args(filename, base_params, ablation_param, estimati
     }
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=4)
-    print(f'experiment results saved')
+    print(f'log of experiment results saved in {filepath}')
 
 
 def load_experiment_results(filename):

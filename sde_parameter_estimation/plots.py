@@ -54,7 +54,7 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
         plt.savefig(filepath)
 
     # # Show plot
-    # plt.show()
+    plt.show()
 
 def plot_trajectories(X, T, dt, save_file = False):
     """

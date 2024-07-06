@@ -5,43 +5,48 @@ T_VALUES="1.0"
 DT_VALUES="0.02"
 NUM_TRAJECTORIES_VALUES="100"
 D_VALUES="1 2 3 5 10"  # Ensure spaces are used as delimiters
-X0_inits="intermediate none ones"
+X0_inits="none intermediate ones"
 #
-## Special case for d=1 and X0=intermediate
-#d=1
-#X0="intermediate"
-#for T in $T_VALUES
+## for num_trajectories ablation
+#for d in $D_VALUES
 #do
-#    for DT in $DT_VALUES
+#    for T in $T_VALUES
 #    do
-#        for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+#        for DT in $DT_VALUES
 #        do
-#            echo "Running special case experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT reg"
-#            python main.py \
-#                --master_seed=2 \
-#                --d=$d \
-#                --simulation_mode='cell_death' \
-#                --dt_em=0.001 \
-#                --n_sdes=50 \
-#                --fixed_X0=$X0 \
-#                --drift_initialization='negative_eigenvalue' \
-#                --diffusion_initialization='scaled_identity' \
-#                --diffusion_scale=0.1 \
-#                --dt=$DT \
-#                --num_trajectories=$NUM_TRAJ \
-#                --T=$T \
-#                --entropy_reg=0.01 \
-#                --n_iterations=1 \
-#                --ablation_variable_name='num_trajectories' \
-#                --ablation_values='25, 50, 100, 250, 500, 1000' \
-#                --methods "OT reg" \
-#                --save_results=True
-#            echo "Special case experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT reg"
+#            for X0 in $X0_inits
+#            do
+#                for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
+#                do
+#                    echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
+#                    python main.py \
+#                        --master_seed=2 \
+#                        --d=$d \
+#                        --simulation_mode='cell_death' \
+#                        --dt_em=0.001 \
+#                        --n_sdes=1 \
+#                        --fixed_X0=$X0 \
+#                        --drift_initialization='negative_eigenvalue' \
+#                        --diffusion_initialization='scaled_identity' \
+#                        --diffusion_scale=0.1 \
+#                        --dt=$DT \
+#                        --num_trajectories=$NUM_TRAJ \
+#                        --T=$T \
+#                        --entropy_reg=0.01 \
+#                        --n_iterations=1 \
+#                        --ablation_variable_name='num_trajectories' \
+#                        --ablation_values='25, 50, 100, 250, 500' \
+#                        --methods OT 'OT reg' \
+#                        --save_results=False
+#                    echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
+#                done
+#            done
 #        done
 #    done
 #done
 
-# General case for all other combinations
+
+# for dt ablation
 for d in $D_VALUES
 do
     for T in $T_VALUES
@@ -50,9 +55,6 @@ do
         do
             for X0 in $X0_inits
             do
-                if [ "$d" -eq 1 ] && [ "$X0" == "intermediate" ]; then
-                    continue  # Skip the special case
-                fi
                 for NUM_TRAJ in $NUM_TRAJECTORIES_VALUES
                 do
                     echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
@@ -61,7 +63,7 @@ do
                         --d=$d \
                         --simulation_mode='cell_death' \
                         --dt_em=0.001 \
-                        --n_sdes=50 \
+                        --n_sdes=10 \
                         --fixed_X0=$X0 \
                         --drift_initialization='negative_eigenvalue' \
                         --diffusion_initialization='scaled_identity' \
@@ -71,10 +73,10 @@ do
                         --T=$T \
                         --entropy_reg=0.01 \
                         --n_iterations=1 \
-                        --ablation_variable_name='num_trajectories' \
-                        --ablation_values='25, 50, 100, 250, 500' \
-                        --methods 'OT reg' \
-                        --save_results=True
+                        --ablation_variable_name='dt' \
+                        --ablation_values='0.02, 0.03, 0.04, 0.05, 0.1' \
+                        --methods OT 'OT reg' \
+                        --save_results=False
                     echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
                 done
             done
