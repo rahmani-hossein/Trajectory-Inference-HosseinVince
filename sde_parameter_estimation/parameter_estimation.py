@@ -52,10 +52,13 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=False, entropy_reg=0, GGT=None)
         elif method == 'OT':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None,
-                                                          n_iterations=n_iterations, use_raw_avg = False) # for now we use the "p" method
+                                                          n_iterations=n_iterations,
+                                                          use_raw_avg=False)  # for now we use the "p" method
         elif method == 'OT reg':
-            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=entropy_reg*dt,
-                                                          GGT=None, n_iterations=n_iterations, use_raw_avg = False) # for now we use the "p" method
+            A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True,
+                                                          entropy_reg=entropy_reg * dt,
+                                                          GGT=None, n_iterations=n_iterations,
+                                                          use_raw_avg=False)  # for now we use the "p" method
         elif method == 'Classical':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=False, GGT=None)
         else:
@@ -64,7 +67,7 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
     return A_estimations
 
 
-def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, use_raw_avg = True):
+def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, use_raw_avg=True):
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
@@ -105,8 +108,52 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
         A = estimate_A(X, dt, GGT=GGT)
     return A
 
+def create_OT_traj(marginal_samples, entropy_reg, N, sinkhorn_log_thresh=0.0001):
+    num_time_steps = len(marginal_samples)
+    d = marginal_samples[0].shape[1]
+    num_trajectories = marginal_samples[0].shape[0]
+    # transport plans
+    ps = []
+    for t in range(num_time_steps-1):
+        # extract marginal samples
+        X_t = marginal_samples[t]
+        X_t1 = marginal_samples[t + 1]
+        # create cost matrix
+        M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+        if entropy_reg == 0:
+            p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
+        else:
+            if entropy_reg > sinkhorn_log_thresh:
+                p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M,
+                                reg=entropy_reg, verbose=False)
+            else:
+                p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M,
+                                reg=entropy_reg, verbose=False, method='sinkhorn_log')
+        ps.append(p)
+    X_OT = np.zeros(shape=(N, num_time_steps, d))
+    OT_index_propagation = np.zeros(shape=(N, num_time_steps-1))
+    indices = np.arange(num_trajectories)
+    for _ in range(N):
+        for t in range(num_time_steps-1):
+            pt_normalized = normalize_rows(ps[t])
+            if t == 0:
+                k = np.random.randint(num_trajectories)
+                X_OT[_, 0, :] = marginal_samples[0][k]
+            else:
+                # retrieve where _th observation at time 0 was projected to at time t
+                k = int(OT_index_propagation[_, t-1])
+            j = np.random.choice(indices, p=pt_normalized[k])
+            OT_index_propagation[_, t] = int(j)
+            X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
+    return X_OT
 
-def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True, sinkhorn_log_thresh = 0.0001, return_OT_traj = False, pinv=False):
+
+
+
+
+
+def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True,
+                      sinkhorn_log_thresh=0.0001, return_OT_traj=False, pinv=False):
     """
     Estimate the drift matrix A using optimal transport between successive marginal distributions.
 
@@ -153,27 +200,39 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, us
             # thresh = 1e-6  # Decrease the threshold
             if entropy_reg > sinkhorn_log_thresh:
                 p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M / M.max(),
-                            reg=entropy_reg, verbose=False)
+                                reg=entropy_reg, verbose=False)
             else:
                 p = ot.sinkhorn(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M / M.max(),
-                                reg=entropy_reg, verbose=False, method= 'sinkhorn_log')
+                                reg=entropy_reg, verbose=False, method='sinkhorn_log')
         else:
             p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
-        # use the optimal transport matched trajectories if there is no regularization
+        # use the optimal transport matched trajectories
         if use_raw_avg:
             # Normalize each row of the transport plan to sum to 1
             p_normalized = normalize_rows(p)
             # Calculate X_t1_OT predictions
-            X_t1_OT = np.dot(p_normalized, X_t1)
-            X_OT[:, t + 1, :] = X_t1_OT
+            if entropy_reg == 0:
+                X_t1_OT = np.dot(p_normalized, X_t1)
+                X_OT[:, t + 1, :] = X_t1_OT
+            else:
+                # check all this
+                indices = np.arange(num_trajectories)
+                X_t1_OT = np.zeros(shape=(num_trajectories, d))  # set up time slice for time t+1
+                for i in range(num_trajectories):
+                    p_normalized_i = p_normalized[i]
+                    j = np.random.choice(indices, p=p_normalized_i)
+                    # print(f'for trajectory {i}: {X_t[i]}, we pick continuation {j}: {X_t1[j]}')
+                    X_t1_OT[i] = X_t1[j]
+                X_OT[:, t + 1, :] = X_t1_OT
             term1 = sum(np.outer(X_OT[i, t + 1, :] - X_OT[i, t, :], X_OT[i, t, :]) for i in
                         range(num_trajectories)) / num_trajectories
             term2 = sum(np.outer(X_OT[i, t, :], X_OT[i, t, :]) for i in range(num_trajectories)) / num_trajectories
         else:
-            term1 = np.zeros((d,d))
+            term1 = np.zeros((d, d))
             for i in range(num_trajectories):
                 for j in range(num_trajectories):
-                    term1[0,0] += p[j,i]* (X_t1[i] - X_t[j]) * X_t[j]
+                    term1[0, 0] += p[j, i] * (X_t1[i] - X_t[j]) * X_t[j]
+            # term2 = sum(np.outer(X_t[i], X_t[i]) for i in range(num_trajectories)) / num_trajectories
             term2 = np.dot(X_t.T, X_t) / num_trajectories
         sum_Edxt_xtT += term1
         sum_Ext_xtT += term2
@@ -185,8 +244,6 @@ def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, us
         return est_A, X_OT
     else:
         return est_A
-
-
 
 
 # def estimate_A_exp(trajectories, dt, GGT=None):
@@ -258,6 +315,7 @@ def estimate_A_exp(trajectories, dt, GGT=None, pinv=False):
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
+
 def estimate_A(trajectories, dt, GGT=None):
     """
     Calculates the closed form estimator A_hat from each of the observed trajectories
@@ -298,6 +356,7 @@ def estimate_A(trajectories, dt, GGT=None):
 
     return A_hat
 
+
 def estimate_GGT(trajectories, T):
     """
     Estimate the matrix GG^T from multiple trajectories of a multidimensional
@@ -328,7 +387,7 @@ def estimate_GGT(trajectories, T):
     return GGT
 
 
-def left_Var_Equation(A1,B1):
+def left_Var_Equation(A1, B1):
     """
     doing the stable version of np.matmul(sum_Edxt_Ext, np.linalg.pinv(sum_Ext_ExtT)) * (1 / dt)
     generally for solving XA = B you should transpose them and use least squares.
@@ -336,10 +395,11 @@ def left_Var_Equation(A1,B1):
     """
     m = B1.shape[0]
     n = A1.shape[0]
-    X = np.zeros((m,n))
+    X = np.zeros((m, n))
     for i in range(m):
-        X[i,:] = np.linalg.lstsq(np.transpose(A1),B1[i,:])[0]
+        X[i, :] = np.linalg.lstsq(np.transpose(A1), B1[i, :])[0]
     return X
+
 
 def normalize_rows(matrix):
     """
@@ -411,4 +471,3 @@ def plot_fuck(X, X_shuffled, trajectory_index=0):
             plt.legend()
     plt.tight_layout()
     plt.show()
-

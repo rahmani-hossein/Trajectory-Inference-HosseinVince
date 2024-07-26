@@ -178,7 +178,7 @@ def multiple_ou_trajectories_cell_measurement_death(num_trajectories, d, T, dt_E
             else:
                 measured_T = i * dt
                 # cell trajectory terminating at i*dt
-                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0)[-1]
+                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
 
 

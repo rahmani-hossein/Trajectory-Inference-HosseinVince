@@ -7,18 +7,17 @@ from simulate_trajectories import *
 
 if __name__ == "__main__":
     # Example usage:
-    N = 1000
-    n_sdes = 50
-    d=5
+    N = 5000
+    n_sdes = 1
+    d=1
     T=1
     dt=0.02
     num_steps_truncate = 50
     N_truncate = 20
-    N_plot = 5
+    N_plot = 0
     A_biases, G_biases = [], []
-
-
-    filename = f"unkilled_seed-2_X0-none_d-{d}_n_sdes-{n_sdes}_dt-0.02_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    # f"seed-42_X0-none_d-1_n_sdes-1_dt-0.02_N-1000_T-1.0"
+    filename = "seed-43_X0-ones_d-1_n_sdes-1_dt-0.02_N-1000_T-1.0"#f"seed-2_X0-ones_d-{d}_n_sdes-{n_sdes}_dt-{dt}_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
     for idx in range(n_sdes):
     # idx = 2
@@ -29,20 +28,15 @@ if __name__ == "__main__":
         G = G_trues[idx]
         X0 =X[0, 0, :]
         print('true A:', A_trues[idx])
-        print('X0:', X0)
+        # print('X0:', X0)
         for i in range(N_plot):
             plot_trajectories(X[i], T, dt)
             # X = ou_process(T, dt, A, G, X0)
             # plot_trajectories(X, T, dt)
-
-
-
-
         print('true GGT:', G_trues[idx]@np.transpose(G_trues[idx]))
         # plot_trajectories(X[0], T, dt)
-        dt = 0.02
         shuffle = True
-        reg = 0.01
+        reg = dt
         shuffled_X = np.zeros((N_truncate, num_steps_truncate, d))
         # Fill shuffled_X with shuffled marginal samples
         shuffled_samples = extract_marginal_samples(X, shuffle=True)
@@ -57,7 +51,10 @@ if __name__ == "__main__":
         # X_OT = estimate_next_step_OT(X, dt, entropy_reg=0, shuffle = shuffle)
         # X_OT_reg = estimate_next_step_OT(X, dt, entropy_reg=reg, shuffle= shuffle)
         raw_avg = True
-        A_OT_reg, X_OT_reg = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=reg, return_OT_traj = True, use_raw_avg=raw_avg)
+        # A_OT_reg, X_OT_reg = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=reg, return_OT_traj = True, use_raw_avg=raw_avg)
+        X_OT_reg = create_OT_traj(shuffled_samples, reg, N)
+        print(X_OT_reg.shape)
+        A_OT_reg = estimate_A_exp(X_OT_reg, dt)
         GG_T_OT_reg = estimate_GGT(X_OT_reg, T)
         print(f'OT reg (reg={reg}) estimated A:', A_OT_reg)
         print(f'A diff:', (A_OT_reg - A_trues[idx]))
@@ -75,7 +72,7 @@ if __name__ == "__main__":
         G_bias = (GG_T_OT - G_trues[idx] @G_trues[idx].T)[0][0]
         G_biases.append(G_bias)
         print(f'G diff:', G_bias)
-        for j in range(N_plot):
+        for j in range(0):
             plot_comparison(X, X_OT, X_OT_reg, trajectory_index=j)
     print('A biases:', A_biases)
     print('G biases:', G_biases)
