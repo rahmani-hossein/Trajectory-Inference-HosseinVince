@@ -53,7 +53,7 @@ def estimate_A_compare_methods(X, dt, entropy_reg, methods, n_iterations=1):
         elif method == 'OT':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None,
                                                           n_iterations=n_iterations,
-                                                          use_raw_avg=False)  # for now we use the "p" method
+                                                          use_raw_avg=True)
         elif method == 'OT reg':
             A_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True,
                                                           entropy_reg=entropy_reg * dt,
@@ -90,11 +90,11 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
             its = 1
             # initial estimate for A
             # the expectations are estimated using conditional densities from OT
-            A_0 = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None, use_raw_avg=use_raw_avg)
+            A_0 = estimate_A_exp_ot_with_traj(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None)
             A = A_0
             # print(f'estimated A for iteration 1:', A)
             while its < n_iterations:
-                A = estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=A, use_raw_avg=use_raw_avg)
+                A = estimate_A_exp_ot_with_traj(marginals, dt, entropy_reg= entropy_reg, cur_est_A= A)#estimate_A_exp_ot_with_traj(marginals, dt, entropy_reg=entropy_reg, cur_est_A=A)
                 # else:
                 #     X_predict = simulate_trajectories.generate_maximal_dataset_cell_measurement_death(num_trajectories, T, dt, d, dt_EM, A, G,
                 #                                                     X0=None)
@@ -108,7 +108,7 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
         A = estimate_A(X, dt, GGT=GGT)
     return A
 
-def create_OT_traj(marginal_samples, entropy_reg, N, sinkhorn_log_thresh=0.0001):
+def create_OT_traj(marginal_samples, entropy_reg, N, dt, sinkhorn_log_thresh=0.0001, cur_est_A = None):
     num_time_steps = len(marginal_samples)
     d = marginal_samples[0].shape[1]
     num_trajectories = marginal_samples[0].shape[0]
@@ -119,7 +119,12 @@ def create_OT_traj(marginal_samples, entropy_reg, N, sinkhorn_log_thresh=0.0001)
         X_t = marginal_samples[t]
         X_t1 = marginal_samples[t + 1]
         # create cost matrix
-        M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+        if cur_est_A is None:
+            # optimize over empirical marginal transition
+            M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+        else:
+            # optimize over empirical marginal transition given current estimated A
+            M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
         if entropy_reg == 0:
             p = ot.emd(a=np.ones(len(X_t)) / len(X_t), b=np.ones(len(X_t1)) / len(X_t1), M=M)
         else:
@@ -147,10 +152,10 @@ def create_OT_traj(marginal_samples, entropy_reg, N, sinkhorn_log_thresh=0.0001)
             X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
     return X_OT
 
-
-
-
-
+def estimate_A_exp_ot_with_traj(marginal_samples, dt, N_traj_sim = 1000, entropy_reg = 0.01, sinkhorn_log_thresh=0.0001, cur_est_A = None):
+    X_OT = create_OT_traj(marginal_samples, entropy_reg, N_traj_sim, dt, sinkhorn_log_thresh, cur_est_A = cur_est_A)
+    A_OT = estimate_A_exp(X_OT, dt)
+    return A_OT
 
 def estimate_A_exp_ot(marginal_samples, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True,
                       sinkhorn_log_thresh=0.0001, return_OT_traj=False, pinv=False):

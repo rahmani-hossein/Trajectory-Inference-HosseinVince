@@ -22,9 +22,10 @@ if cuda_available:
 else:
     print('Not using cuda optimization')
 
-def param_est_OT(A, D, X, dt, T, entropy_reg = 0):
+def param_est_OT(A, D, X, dt, T, entropy_reg = 0, N_paths_gen = 1000):
     marginals = parameter_estimation.extract_marginal_samples(X)
-    est_A_OT, X_OT = parameter_estimation.estimate_A_exp_ot(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None, use_raw_avg=True, return_OT_traj=True)
+    X_OT = parameter_estimation.create_OT_traj(marginals, entropy_reg, N_paths_gen, dt)
+    est_A_OT = parameter_estimation.estimate_A_exp(X_OT, dt)
     print('true A:', A)
     if entropy_reg == 0:
         print('estimated A from classic OT:', est_A_OT)
@@ -32,7 +33,6 @@ def param_est_OT(A, D, X, dt, T, entropy_reg = 0):
         print(f'estimated A from regularized OT with eps={entropy_reg}:', est_A_OT)
     print(f'A bias:', est_A_OT[0][0] - A[0][0])
     # print('MSE:', np.mean((est_A_OT - A) ** 2))
-    est_A = -parameter_estimation.estimate_A_exp(X_OT, dt)
     # print('sanity check for estimated A:', est_A)
     est_G = parameter_estimation.estimate_GGT(X_OT, T)
     print('True D: ', D)
@@ -57,13 +57,13 @@ def X0_func(init_type):
         return lambda N, d: seeded_random_vector(N, dim, n_seed)
 
 if __name__ == "__main__":
-    run_gwot = False
+    run_gwot = True
     n_seed = 0
     # setup simulation parameters
     dim = 1  # dimension of simulation
     sim_steps = 100  # number of steps to use for Euler-Maruyama method
-    T = 100  # number of timepoints
-    N = 20  # number of particles per timepoint
+    T = 50  # number of timepoints
+    N = 2  # number of particles per timepoint
     D = 1 # diffusivity
     t_final = 1  # simulation run on [0, t_final]
     dt = t_final / T
@@ -100,11 +100,11 @@ if __name__ == "__main__":
     # sample from simulation
     sim.sample(steps_scale=int(sim_steps / sim.T), trunc=N)
 
-    # plot samples
-    plt.scatter(np.kron(np.linspace(0, t_final, T), np.ones(N)), sim.x[:, 0], alpha=0.1, color="red")
-    plt.xlabel("t");
-    plt.ylabel("dim 1")
-    plt.show()
+    # # plot samples
+    # plt.scatter(np.kron(np.linspace(0, t_final, T), np.ones(N)), sim.x[:, 0], alpha=0.1, color="red")
+    # plt.xlabel("t");
+    # plt.ylabel("dim 1")
+    # plt.show()
 
     # convert sim.x to standard form
     X = np.zeros((N, T, dim))
@@ -116,6 +116,7 @@ if __name__ == "__main__":
         # no a priori estimate on the branching (g = 1)
         lamda_reg = 0.00215
         eps_df = D * dt * eps_multiplier
+        print('setting up the model')
         if cuda_available:
             model_nullgrowth = gwot.models.OTModel(sim, lamda_reg=lamda_reg,
                                                    eps_df=eps_df * torch.ones(sim.T).cuda(),
@@ -132,6 +133,7 @@ if __name__ == "__main__":
                                                    device=device)
 
         # solve both gWOT models using L-BFGS
+        print('optimizing via L-BFGS')
         for m in [model_nullgrowth]:
             m.solve_lbfgs(steps=25,
                           max_iter=50,
@@ -145,6 +147,7 @@ if __name__ == "__main__":
         # path sampling from gwot
         # sample paths
         N_paths = 5000
+        print('generating gWOT trajectories')
         with torch.no_grad():
             paths_nullgrowth = bs.sample_paths(None, N=N_paths, coord=True, x_all=[sim.x, ] * sim.T,
                                                get_gamma_fn=lambda i: model_nullgrowth.get_coupling_reg(i,
@@ -153,7 +156,7 @@ if __name__ == "__main__":
                                                num_couplings=sim.T - 1)
             # paths_growth = bs.sample_paths(None, N = N_paths, coord = True, x_all = [sim.x, ]*sim.T,
             #                     get_gamma_fn = lambda i : model_growth.get_coupling_reg(i, K = model_growth.get_K(i)).cpu(), num_couplings = sim.T-1)
-        np.save(f'X0-{init_type}_paths_nullgrowth_d-{dim}_from_N-{N}_A-{A_scalar}_diff-{D}_dt-{dt}.npy', paths_nullgrowth)
+        # np.save(f'X0-{init_type}_paths_nullgrowth_d-{dim}_from_N-{N}_A-{A_scalar}_diff-{D}_dt-{dt}.npy', paths_nullgrowth)
         # parameter estimation
         print(paths_nullgrowth.shape)
         print('dt:', dt)
