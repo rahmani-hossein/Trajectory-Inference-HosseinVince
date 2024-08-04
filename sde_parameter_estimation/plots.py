@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_errs, list_method_labels, d,
-             experiment_name, save_plot = True):
+             experiment_name, save_plot = True, parameter_name = 'A'):
     """
     Plot and save Mean Squared Error (MSE) results.
 
@@ -41,7 +41,7 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
     # Set the y-ticks
     ax.set_yticks(yticks)
     plt.ylabel('Mean Squared Error (MSE)')
-    plt.title(f'Parameter Estimation on {d}-dimensional Stationary Linear Additive Noise SDE')
+    plt.title(f'Parameter Estimation of {parameter_name} on {d}-dimensional Stationary Linear Additive Noise SDE')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -49,11 +49,11 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
     # Save the plot
     if save_plot:
         os.makedirs('../MSE_plots', exist_ok=True)
-        plot_filename = f"mse_plot_{experiment_name}.png"
+        plot_filename = f"mse_plot_{experiment_name}_{parameter_name}.png"
         filepath = os.path.join('../MSE_plots', plot_filename)
         plt.savefig(filepath)
 
-    # # Show plot
+    # Show plot
     plt.show()
 
 def plot_trajectories(X, T, dt, save_file = False):

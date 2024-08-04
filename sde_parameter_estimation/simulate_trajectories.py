@@ -59,7 +59,7 @@ def generate_sde_data_cell_measurement(i, max_num_trajectories, max_T, min_dt, b
     maximal_X_measured = generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, base_params['d'], base_params['dt_EM'], A, G, base_params['X0'])
     print(f'A for SDE {i}:', A)
     return A, G, maximal_X_measured
-def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None):
+def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None, stationary = False):
     n_measured_times = int(max_T / min_dt)
     X_measured = np.zeros((max_num_trajectories, n_measured_times, d))
 
@@ -67,19 +67,25 @@ def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T,
         for n in range(max_num_trajectories):
             if isinstance(X0, np.ndarray):
                 X0_ = X0
-            if X0 is None or X0 == 'intermediate' and i == 0:
+            elif X0 is None or X0 == 'intermediate' and i == 0:
                 X0_ = np.random.randn(d)
-            if i == 0:
+
+            if i == 0 and stationary == False:
                 X_measured[n, 0, :] = X0_
+            elif i == 0 and stationary == True:
+                X_measured[n, 0, :] = ou_process(1000, 0.02, A, G, X0_)[-1]
             else:
                 # cell trajectory will terminate at i*dt
                 measured_T = i * min_dt
                 # use consistent X0s across the measured times
-                if X0 == 'intermediate':
-                    X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X_measured[n, 0, :])[-1]
-                else:
-                    # cell trajectory terminating at i*dt
+                if isinstance(X0, np.ndarray):
                     X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
+                else:
+                    if X0 == 'intermediate':
+                        X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X_measured[n, 0, :])[-1]
+                    else:
+                        # cell trajectory terminating at i*dt
+                        X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
 
 def ou_process(T, dt, A, G, X0):

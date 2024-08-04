@@ -1,23 +1,11 @@
 import numpy as np
 import sys
 from simulate_trajectories import *
-from parameter_estimation import estimate_A_compare_methods
+from parameter_estimation import estimate_params_compare_methods
 import utils
 import plots
 import argparse
-import matplotlib.pyplot as plt
-import torch
-from torch.autograd import grad, Variable
-import autograd
-import copy
-import scipy as sp
-from scipy import stats
-from sklearn import metrics
-import sys
-import ot
-import gwot
-from gwot import models, sim, ts, util
-import gwot.bridgesampling as bs
+import datetime
 import parameter_estimation, simulate_trajectories, utils
 
 
@@ -46,6 +34,8 @@ def get_parser():
     # parameters for estimation
     parser.add_argument('--entropy_reg', default=0.01, type=float,
                         help='Entropy regularization parameter for OT solver.')
+    parser.add_argument('--frac_other_time_samples', default=0, type=float,
+                        help='Fraction of probability reserved for samples observed outside the given time')
     parser.add_argument('--n_iterations', default=1, type=int, help='Number of iterations for "iterative" approach.')
     # experiment parameters
     parser.add_argument('--ablation_variable_name', default='dt', help='name of ablation variable')
@@ -75,43 +65,55 @@ def main(args):
         measurement_filename = args.measurement_load_file
         A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(measurement_filename)
         print(f'Retrieved previously saved measurements from {measurement_filename}')
-
-    experiment_name = f'tp_{args.ablation_variable_name}_from_{measurement_filename}'
+    # Get the current date
+    current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    experiment_name = f'{current_date}_2_iteration_{args.ablation_variable_name}_from_{measurement_filename}'
     measurement_variables = ['T', 'dt', 'num_trajectories']
-    parameter_estimation_variables = ['n_iterations', 'entropy_reg']
+    parameter_estimation_variables = ['n_iterations', 'entropy_reg', 'frac_other_time_samples']
 
     if args.ablation_variable_name in measurement_variables:
-        mse_scores_ablation = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt, args,
+        mse_scores_ablation_A, mse_scores_ablation_G = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt, args,
                                            measurement_ablation=True)
     elif args.ablation_variable_name in parameter_estimation_variables:
-        mse_scores_ablation = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt, args,
+        mse_scores_ablation_A, mse_scores_ablation_G = run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt, args,
                                            measurement_ablation=False)
     else:
         raise ValueError(f"Unsupported ablation variable: {args.ablation_variable_name}")
 
-    std_errs = {}
-    mean_mse_scores = {}
+    std_errs_A = {}
+    mean_mse_scores_A = {}
+    std_errs_G = {}
+    mean_mse_scores_G = {}
 
     for method in args.methods:
-        mean_mse_scores[method] = []
-        std_errs[method] = []
-        for ablation_value in mse_scores_ablation:
-            mean_mse = np.mean(mse_scores_ablation[ablation_value][method])
-            mean_mse_scores[method].append(mean_mse)
-            std_error = np.std(mse_scores_ablation[ablation_value][method]) / np.sqrt(args.n_sdes)
-            std_errs[method].append(std_error)
-
+        mean_mse_scores_A[method] = []
+        std_errs_A[method] = []
+        mean_mse_scores_G[method] = []
+        std_errs_G[method] = []
+        for ablation_value in mse_scores_ablation_A:
+            mean_mse_A = np.mean(mse_scores_ablation_A[ablation_value][method])
+            mean_mse_scores_A[method].append(mean_mse_A)
+            std_error_A = np.std(mse_scores_ablation_A[ablation_value][method]) / np.sqrt(args.n_sdes)
+            std_errs_A[method].append(std_error_A)
+            mean_mse_G = np.mean(mse_scores_ablation_G[ablation_value][method])
+            mean_mse_scores_G[method].append(mean_mse_G)
+            std_error_G = np.std(mse_scores_ablation_G[ablation_value][method]) / np.sqrt(args.n_sdes)
+            std_errs_G[method].append(std_error_G)
     results = {
-        'mse_scores': mean_mse_scores,
-        'std_errs': std_errs
+        'mse_scores_A': mean_mse_scores_A,
+        'std_errs_A': std_errs_A,
+        'mse_scores_G': mean_mse_scores_G,
+        'std_errs_G': std_errs_G
     }
     # plot and save results
     results_filename = f"results_{experiment_name}.json"
     ablation_values = ablation_param[args.ablation_variable_name]
     plots.plot_MSE(ablation_values, args.ablation_variable_name,
-                   list(mean_mse_scores.values()), list(std_errs.values()), args.methods, args.d, experiment_name)
+                   list(mean_mse_scores_A.values()), list(std_errs_A.values()), args.methods, args.d, experiment_name, parameter_name='A')
+    plots.plot_MSE(ablation_values, args.ablation_variable_name,
+                   list(mean_mse_scores_G.values()), list(std_errs_G.values()), args.methods, args.d, experiment_name, parameter_name='G')
     if args.save_results:
-        utils.save_detailed_experiment_data(results_filename, mse_scores_ablation)
+        utils.save_detailed_experiment_data(results_filename, mse_scores_ablation_A)
         estimation_params = utils.extract_estimation_parameters(args)
         utils.save_experiment_results_args(results_filename, base_params, ablation_param, estimation_params, A_trues,
                                            G_trues, results)
@@ -126,60 +128,93 @@ def run_ablation(ablation_param, A_trues, G_trues, maximal_X_measured_list, max_
     else:
         X_measured_list = utils.preprocess_measured_data(maximal_X_measured_list, ablation_values, max_num_trajectories, max_T, min_dt, args, measurement_ablation)
     # perform parameter estimation for each ablation value
-    mse_scores_ablation = {}  # this will be a dictionary of dictionaries, with keys given by ablation value
+    mse_scores_ablation_A = {}  # this will be a dictionary of dictionaries, with keys given by ablation value
+    mse_scores_ablation_G = {}
 
     for ablation_value in ablation_values:
         if args.ablation_variable_name == 'dt':
             dt = ablation_value
         else:
             dt = float(args.dt)
+        if args.ablation_variable_name == 'T':
+            T = ablation_value
+        else:
+            T = float(args.dt)
+
         if measurement_ablation:
             print('sanity check for shape of measured data:', X_measured_ablation_dict[ablation_value][0].shape)
-            mse_scores_ablation[ablation_value] = compute_mse_across_methods(X_measured_ablation_dict[ablation_value], dt, A_trues,
+            mse_scores_A, mse_scores_G = compute_mse_across_methods(X_measured_ablation_dict[ablation_value], dt, T, A_trues, G_trues,
                                                                              ablation_value, args,
                                                                              measurement_ablation)
+            mse_scores_ablation_A[ablation_value] = mse_scores_A
+            mse_scores_ablation_G[ablation_value] = mse_scores_G
+
         else:
             print('sanity check for shape of measured data:', X_measured_list[0].shape)
-            mse_scores_ablation[ablation_value] = compute_mse_across_methods(X_measured_list, dt, A_trues,
+            if args.ablation_variable_name == 'n_iterations':
+                # optimize this later
+                pass
+
+            mse_scores_A, mse_scores_G = compute_mse_across_methods(X_measured_list, dt, T, A_trues, G_trues,
                                                                          ablation_value, args,
                                                                          measurement_ablation)
+            mse_scores_ablation_A[ablation_value] = mse_scores_A
+            mse_scores_ablation_G[ablation_value] = mse_scores_G
         for method in args.methods:
             print(
-                f'Mean MSE ({method}) for {args.ablation_variable_name} = {ablation_value}: {np.mean(mse_scores_ablation[ablation_value][method])}, Standard Error: {np.std(mse_scores_ablation[ablation_value][method]) / np.sqrt(args.n_sdes)}')
-    return mse_scores_ablation
+                f'A estimation mean MSE ({method}) for {args.ablation_variable_name} = {ablation_value}: {np.mean(mse_scores_ablation_A[ablation_value][method])}, Standard Error: {np.std(mse_scores_ablation_A[ablation_value][method]) / np.sqrt(args.n_sdes)}')
+            print(
+                f'G estimation mean MSE ({method}) for {args.ablation_variable_name} = {ablation_value}: {np.mean(mse_scores_ablation_G[ablation_value][method])}, Standard Error: {np.std(mse_scores_ablation_G[ablation_value][method]) / np.sqrt(args.n_sdes)}')
+    return mse_scores_ablation_A, mse_scores_ablation_G
 
-def compute_mse_across_methods(X_measured_list, dt, A_trues, ablation_value, args, measurement_ablation=True):
+def compute_mse_across_methods(X_measured_list, dt, T, A_trues, G_trues, ablation_value, args, measurement_ablation=True):
     '''
     Args:
         X_measured_list: list of measured data indexed by list of SDEs
         dt: time granularity for measurements
+        T:
         A_trues: list of true drift matrices A indexed by list of SDEs
         args:
     Returns:
 
     '''
 
-    mse_scores = {method: [] for method in args.methods}
+    mse_scores_A = {method: [] for method in args.methods}
+    mse_scores_G = {method: [] for method in args.methods}
 
     # first iterate over each SDE and collect results
     for i in tqdm(range(int(args.n_sdes))):
         if measurement_ablation:
-            A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, args.entropy_reg, args.methods,
-                                                       n_iterations=args.n_iterations)
+            A_estimations, G_estimations = estimate_params_compare_methods(X_measured_list[i], dt, T, args.entropy_reg, args.methods,
+                                                       n_iterations=args.n_iterations, frac_other_time_samples= args.frac_other_time_samples)
         else:
             if args.ablation_variable_name == 'n_iterations':
-                A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, args.entropy_reg, args.methods,
-                                                           n_iterations=ablation_value)
+                A_estimations, G_estimations = estimate_params_compare_methods(X_measured_list[i], dt, T, args.entropy_reg, args.methods,
+                                                           n_iterations=ablation_value, frac_other_time_samples= args.frac_other_time_samples)
             elif args.ablation_variable_name == 'entropy_reg':
-                A_estimations = estimate_A_compare_methods(X_measured_list[i], dt, methods=args.methods,
+                A_estimations, G_estimations = estimate_params_compare_methods(X_measured_list[i], dt, T, methods=args.methods,
                                                            entropy_reg=ablation_value,
-                                                           n_iterations=args.n_iterations)
+                                                           n_iterations=args.n_iterations, frac_other_time_samples= args.frac_other_time_samples)
+            elif args.ablation_variable_name == 'frac_other_time_samples':
+                A_estimations, G_estimations = estimate_params_compare_methods(X_measured_list[i], dt, T, methods=args.methods,
+                                                           entropy_reg=args.entropy_reg,
+                                                           n_iterations=args.n_iterations,
+                                                           frac_other_time_samples=ablation_value)
+            else:
+                print('Error: unsupported ablation variable')
+                return
+
         for method, A_hat in A_estimations.items():
             # if method == 'OT reg':
             #     print('true A:', A_trues[i])
             #     print('estimated A from OT reg:', A_hat)
-            mse_scores[method].append(np.mean((A_hat - A_trues[i]) ** 2))
-    return mse_scores
+            mse_scores_A[method].append(np.mean((A_hat - A_trues[i]) ** 2))
+        for method, G_hat in G_estimations.items():
+            # if method == 'OT reg':
+            #     print('true A:', A_trues[i])
+            #     print('estimated A from OT reg:', A_hat)
+            mse_scores_G[method].append(np.mean((G_hat - G_trues[i]) ** 2))
+    return mse_scores_A, mse_scores_G
 
 
 if __name__ == "__main__":
