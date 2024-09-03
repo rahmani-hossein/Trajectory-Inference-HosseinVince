@@ -2,10 +2,10 @@
 #
 # Parameters to ablate
 T_VALUES="1.0"
-DT_VALUES="0.02"
+DT_VALUES="0.01"
 NUM_TRAJECTORIES_VALUES="100"
-D_VALUES="1 2 3 5 10"  # Ensure spaces are used as delimiters
-X0_inits="none intermediate ones"
+D_VALUES="2"  # Ensure spaces are used as delimiters
+X0_inits="ones"
 #
 ## for num_trajectories ablation
 #for d in $D_VALUES
@@ -59,24 +59,27 @@ do
                 do
                     echo "Running experiment for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
                     python main.py \
-                        --master_seed=2 \
+                        --master_seed=60\
                         --d=$d \
-                        --simulation_mode='cell_death' \
+                        --simulation_mode='killed' \
                         --dt_em=0.001 \
-                        --n_sdes=10 \
+                        --n_sdes=1 \
                         --fixed_X0=$X0 \
                         --drift_initialization='negative_eigenvalue' \
                         --diffusion_initialization='scaled_identity' \
-                        --diffusion_scale=0.1 \
+                        --D=1 \
                         --dt=$DT \
                         --num_trajectories=$NUM_TRAJ \
                         --T=$T \
-                        --entropy_reg=0.01 \
                         --n_iterations=1 \
-                        --ablation_variable_name='dt' \
-                        --ablation_values='0.02, 0.03, 0.04, 0.05, 0.1' \
-                        --methods OT 'OT reg' \
-                        --save_results=False
+                        --true_A=False \
+                        --true_G=False \
+                        --saved_drifts_diffusions_file='2D_ex_rotation' \
+                        --ablation_variable_name='n_iterations' \
+                        --ablation_values='100' \
+                        --methods 'OT reg' \
+                        --display_plot=True \
+                        --save_results=True
                     echo "Experiment done for d=$d, T=$T, dt=$DT, num_trajectories=$NUM_TRAJ, fixed_X0=$X0, methods=OT 'OT reg'"
                 done
             done

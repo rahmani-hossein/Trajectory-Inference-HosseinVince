@@ -11,7 +11,6 @@ import copy
 
 from gwot.ts import TimeSeries
 from gwot.util import sde_integrate
-
 class Simulation(TimeSeries):
     """Diffusion-drift SDE simulations using the Euler-Maruyama method. 
     

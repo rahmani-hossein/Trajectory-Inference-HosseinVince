@@ -1,86 +1,12 @@
 import numpy as np
 import ot
+from ot.bregman._sinkhorn import sinkhorn_multidimensional
+from utils.estimation import *
 from scipy.linalg import expm
-from scipy.stats import multivariate_normal
-import matplotlib.pyplot as plt
-import random
 
-
-def extract_marginal_samples(trajectories, shuffle=False):
+def estimate_params_compare_methods(X, dt, T, methods, n_iterations=1, frac_other_time_samples = None, A = None, GGT = None):
     """
-    Extract marginal distributions per time from a 3D trajectory array.
-
-    Parameters:
-        trajectories (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
-
-    Returns:
-        list of numpy.ndarray: Each element is an array containing samples from the marginal distribution at each time step.
-    """
-    num_trajectories, num_steps, d = trajectories.shape
-    marginal_samples = []
-
-    for t in range(num_steps):
-        # Extract all samples at time t from each trajectory
-        samples_at_t = trajectories[:, t, :]
-        if shuffle:
-            samples_at_t_copy = samples_at_t.copy()
-            np.random.shuffle(samples_at_t_copy)
-            marginal_samples.append(samples_at_t_copy)
-        else:
-            marginal_samples.append(samples_at_t)
-
-    return marginal_samples
-
-def flatten_trajectories_sequentially(trajectories):
-    """
-    Flatten the 3D trajectory array into a 2D array ordered sequentially by time steps.
-
-    Parameters:
-        trajectories (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
-
-    Returns:
-        numpy.ndarray: 2D array where rows are samples ordered first by time step, then by trajectory index.
-    """
-    num_trajectories, num_steps, d = trajectories.shape
-    # Initialize the flattened array
-    flattened = np.zeros((num_trajectories * num_steps, d))
-
-    # Fill the flattened array
-    for t in range(num_steps):
-        flattened[t*num_trajectories:(t+1)*num_trajectories] = trajectories[:, t, :]
-
-    return flattened
-
-
-def set_probabilities(observations, num_trajectories, t, frac_other_time_samples):
-    """
-    Set probabilities for distributions a and b with special emphasis on time steps t and t+1.
-
-    Parameters:
-        observations (numpy.ndarray): Flattened array of observations sorted by time.
-        num_trajectories (int): Number of trajectories per time step.
-        t (int): Current time step of interest.
-        frac_other_time_samples (float): Fraction of probability mass for other times.
-
-    Returns:
-        tuple: Two numpy arrays representing the probability distributions a and b.
-    """
-    num_samples = observations.shape[0]
-
-    # Initialize probability distributions
-    a = np.full(num_samples, frac_other_time_samples / (num_samples - num_trajectories))
-    b = np.full(num_samples, frac_other_time_samples / (num_samples - num_trajectories))
-
-    # Adjust probabilities for time step t and t+1
-    a[t * num_trajectories:(t + 1) * num_trajectories] = (1 - frac_other_time_samples) / num_trajectories
-    b[(t + 1) * num_trajectories:(t + 2) * num_trajectories] = (1 - frac_other_time_samples) / num_trajectories
-
-    return a, b
-
-
-def estimate_params_compare_methods(X, dt, T, entropy_reg, methods, n_iterations=1, frac_other_time_samples = None):
-    """
-    Estimate A using various methods.
+    Estimate A using various methods. Currently, only supports linear drift estimation
 
     Parameters:
     - X (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
@@ -101,14 +27,13 @@ def estimate_params_compare_methods(X, dt, T, entropy_reg, methods, n_iterations
             G_estimations[method] = estimate_GGT(X, T)
         elif method == 'OT':
             est_A, est_G = estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None,
-                                                          n_iterations=n_iterations, metric = 'euclidean', frac_other_time_samples = frac_other_time_samples)
+                                                          n_iterations=n_iterations, metric = 'euclidean', frac_other_time_samples = frac_other_time_samples, A = A)
             A_estimations[method] = est_A
             G_estimations[method] = est_G
         elif method == 'OT reg':
             est_A, est_G = estimate_linear_drift(X, dt, expectation=True, OT=True,
-                                                          entropy_reg=entropy_reg * dt,
-                                                          GGT=None, n_iterations=n_iterations,
-                                                          metric = 'sqeuclidean', frac_other_time_samples = frac_other_time_samples)
+                                                          GGT=GGT, n_iterations=n_iterations,
+                                                          metric = 'sqeuclidean', frac_other_time_samples = frac_other_time_samples, A=A)
             A_estimations[method] = est_A
             G_estimations[method] = est_G
         elif method == 'Classical':
@@ -122,42 +47,8 @@ def estimate_params_compare_methods(X, dt, T, entropy_reg, methods, n_iterations
     return A_estimations, G_estimations
 
 
-# def estimate_G_compare_methods(X, T, entropy_reg, methods, n_iterations=1, frac_other_time_samples = None):
-#     """
-#     Estimate G using various methods.
-#
-#     Parameters:
-#     - X (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
-#     - T
-#     - entropy_reg: Entropy regularization parameter.
-#     - methods: List of method names to use for estimation.
-#
-#     Returns:
-#     - Dictionary of estimated G matrices keyed by method name.
-#     """
-#
-#     G_estimations = {}
-#     # Define the estimation functions for each method
-#     for method in methods:
-#         if method == 'Trajectory':
-#             G_estimations[method] = estimate_GGT(X, T)
-#         elif method == 'OT':
-#
-#             G_estimations[method] =
-#         elif method == 'OT reg':
-#             G_estimations[method] = estimate_linear_drift(X, dt, expectation=True, OT=True,
-#                                                           entropy_reg=entropy_reg * dt,
-#                                                           GGT=None, n_iterations=n_iterations,
-#                                                           metric = 'sqeuclidean', frac_other_time_samples = frac_other_time_samples)
-#         elif method == 'Classical':
-#             G_estimations[method] = estimate_linear_drift(X, dt, expectation=False, GGT=None)
-#         else:
-#             raise ValueError(f"Unsupported method: {method}")
-#
-#     return G_estimations
 
-
-def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, metric = 'euclidean', frac_other_time_samples = 0):
+def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=None, n_iterations=1, metric = 'sqeuclidean', frac_other_time_samples = 0, A = None):
     '''
     we assume that the SDE is multivariable OU: dX_t = AX_tdt + GdW_t
     This function serves to estimate the drift A using a specified estimator
@@ -175,7 +66,15 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
             its = 1
             T = X.shape[1] * dt
             # initial estimate for A
-            A_0, G_0  = estimate_A_exp_ot_with_traj(X, dt, T, entropy_reg = entropy_reg, metric = metric, frac_other_time_samples= frac_other_time_samples, estimate_G=True)
+            A_0, G_0 = estimate_A_exp_ot_with_traj(X, dt, T, frac_other_time_samples, cur_est_A = A, cur_est_D=GGT)
+            # if true_A is not None:
+                # print('true A: ', true_A)
+                # A_0, G_0 = estimate_A_exp_ot_with_traj(X, dt, T, entropy_reg=entropy_reg, metric=metric,
+                #                                        frac_other_time_samples=frac_other_time_samples, estimate_G=True, cur_est_A = true_A)
+
+            # else:
+
+                # A_0, G_0  = estimate_A_exp_ot_with_traj(X, dt, T, entropy_reg = entropy_reg, metric = metric, frac_other_time_samples= frac_other_time_samples, estimate_G=True)
 
             #estimate_A_exp_ot_with_traj(marginals, dt, entropy_reg=entropy_reg, cur_est_A=None, metric = metric)
             # if entropy_reg == 0:
@@ -183,10 +82,12 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
             G = G_0
             A = A_0
             # print(f'estimated A for iteration 1:', A)
+            # print(f'estimated GGT for iteration 1:', G)
             while its < n_iterations:
-                A, G = estimate_A_exp_ot_with_traj(X, dt, T, entropy_reg= entropy_reg, cur_est_A= A, metric = metric, frac_other_time_samples=frac_other_time_samples, estimate_G=True)
+                A, G = estimate_A_exp_ot_with_traj(X, dt, T, frac_other_time_samples, cur_est_A=A, cur_est_D = G, estimate_G=True)
                 #estimate_A_exp_ot_with_traj(marginals, dt, entropy_reg=entropy_reg, cur_est_A=A)                                         X0=None)
                 its += 1
+                print('this should not be run since it is computationally inefficient')
                 # print(f'estimated A for iteration {its}:', A)
 
             return A, G
@@ -198,8 +99,9 @@ def estimate_linear_drift(X, dt, expectation=True, OT=True, entropy_reg=0, GGT=N
         A = estimate_A(X, dt, GGT=GGT)
     return A
 
-def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.0002, cur_est_A = None, metric = 'euclidean', frac_other_time_samples = 0):
+def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.01, cur_est_A = None, metric = 'euclidean', frac_other_time_samples = 0, linearization = False):
     marginal_samples = extract_marginal_samples(X)
+    np.random.seed()
     num_time_steps = len(marginal_samples)
     d = marginal_samples[0].shape[1]
     num_trajectories = marginal_samples[0].shape[0]
@@ -224,24 +126,28 @@ def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.0002, cur_est_A = N
             # if t == 1:
             #     print('cost matrix:', M)
         else:
-            # optimize over empirical marginal transition given current estimated A
-            mu = np.dot(X_t, expm(cur_est_A * dt))
-            M = ot.dist(mu, X_t1, metric=metric)
-            # M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric=metric)
-
+            if linearization:
+                M = ot.dist(X_t + np.matmul(X_t, cur_est_A)*dt, X_t1, metric=metric)
+            else:
+                M = ot.dist(np.matmul(X_t, expm(cur_est_A * dt)), X_t1, metric=metric)
         if entropy_reg == 0:
-            p = ot.emd(a= a, b= b, M=M)
+            p = ot.emd(a= a, b= b, M=M/2)
         else:
             if cur_est_A is not None:
-                D = entropy_reg / (2 * dt)
-                cond_variance = D * np.linalg.pinv(cur_est_A) * (expm(2*cur_est_A * dt) - 1)
+                if linearization:
+                    cond_variance = entropy_reg
+                    # cond_variance = D * np.linalg.pinv(cur_est_A) * (cur_est_A * dt)
+                else:
+                    sigma_2 = entropy_reg / (2*dt)
+                    cond_variance = sigma_2 * np.linalg.pinv(cur_est_A) * (expm(2 * cur_est_A * dt)-1)
+                    cond_variance = np.linalg.det(cond_variance) # convert to scalar
             else:
                 cond_variance = entropy_reg
             if entropy_reg > sinkhorn_log_thresh:
-                p = ot.sinkhorn(a=a, b=b, M=M/2,
+                p = ot.sinkhorn(a=a, b=b, M=M/2,#/2
                                 reg=cond_variance, verbose=False)
             else:
-                p = ot.sinkhorn(a=a, b=b, M=M/2,
+                p = ot.sinkhorn(a=a, b=b, M=M/2, #/2
                                 reg=cond_variance, verbose=False, method='sinkhorn_log')
         ps.append(p)
     if entropy_reg == 0:
@@ -276,14 +182,195 @@ def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.0002, cur_est_A = N
     #     print(X_OT[:, :3, :])
     return X_OT
 
-def estimate_A_exp_ot_with_traj(X, dt, T=1, N_traj_sim = 1000, entropy_reg = 0.01, frac_other_time_samples = 0, sinkhorn_log_thresh=0.1, cur_est_A = None, metric = 'euclidean', estimate_G = False):
-    X_OT = create_OT_traj(X, entropy_reg, dt, cur_est_A = cur_est_A, metric = metric, frac_other_time_samples = frac_other_time_samples)
+
+def create_OT_traj_md(X, D, dt, cur_est_A = None, frac_other_time_samples = 0, linearization = False):
+    marginal_samples = extract_marginal_samples(X)
+    np.random.seed()
+    num_time_steps = len(marginal_samples)
+    d = marginal_samples[0].shape[1]
+    if D is None:
+        D = np.eye(d)
+    num_trajectories = marginal_samples[0].shape[0]
+    # transport plans
+    ps = []
+    for t in range(num_time_steps-1):
+        if frac_other_time_samples == 0:
+            # extract marginal samples
+            X_t = marginal_samples[t]
+            X_t1 = marginal_samples[t + 1]
+            a = np.ones(len(X_t)) / len(X_t)
+            b = np.ones(len(X_t1)) / len(X_t1)
+        else:
+            observations_sorted_by_time = flatten_trajectories_sequentially(X)
+            X_t = observations_sorted_by_time
+            X_t1 = observations_sorted_by_time
+            a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
+
+        if cur_est_A is not None:
+            if linearization:
+                K = np.zeros((num_trajectories, num_trajectories))
+                for i in range(num_trajectories):
+                    for j in range(num_trajectories):
+                        dX = X[j, t + 1, :] - np.matmul(X[i, t, :], np.eye(d) + cur_est_A*dt)
+                        dX = dX.reshape(-1, 1)  # Reshape to a column vector
+                        if np.linalg.det(D) != 0:
+                            K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, np.linalg.pinv(D * dt) @ dX))
+                        else:
+                            K[i, j] = np.exp(-0.5 * np.dot(dX.T, np.linalg.pinv(D * dt) @ dX))
+            else:
+                # complete this later
+                break
+        else:
+
+            K = np.zeros((num_trajectories, num_trajectories))
+
+            for i in range(num_trajectories):
+                for j in range(num_trajectories):
+                    dX = X[j, t+1, :] - X[i, t, :]
+                    dX = dX.reshape(-1, 1)  # Reshape to a column vector
+                    if np.linalg.det(D) != 0:
+                        K[i, j] = (2 * math.pi) ** (-d / 2) * np.linalg.det(D) ** (-1 / 2) * np.exp(
+                            -0.5 * np.dot(dX.T, np.linalg.pinv(D * dt) @ dX))
+                    else:
+                        K[i, j] = np.exp(-0.5 * np.dot(dX.T, np.linalg.pinv(D * dt) @ dX))
+        # if t == num_time_steps - 2:
+        #     print('initial K at last time', K)
+        p = sinkhorn_multidimensional(a=a, b=b, K=K, verbose=False)
+        ps.append(p)
+
+    N = max(5 * num_trajectories, 1000)
+    X_OT = np.zeros(shape=(N, num_time_steps, d))
+    OT_index_propagation = np.zeros(shape=(N, num_time_steps-1))
+    if frac_other_time_samples == 0:
+        indices = np.arange(num_trajectories)
+    else:
+        indices = np.arange(num_trajectories * num_time_steps)
+    for _ in range(N):
+        for t in range(num_time_steps-1):
+            pt_normalized = normalize_rows(ps[t])
+            if t == 0:
+                k = np.random.randint(num_trajectories)
+                X_OT[_, 0, :] = marginal_samples[0][k]
+            else:
+                # retrieve where _th observation at time 0 was projected to at time t
+                k = int(OT_index_propagation[_, t-1])
+            j = np.random.choice(indices, p=pt_normalized[k])
+            OT_index_propagation[_, t] = int(j)
+            if frac_other_time_samples == 0:
+                X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
+            else:
+                X_OT[_, t + 1, :] = observations_sorted_by_time[j]
+    # if N < 10:
+    #     print(X_OT[:, :3, :])
+    return X_OT
+
+
+
+def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.01, cur_est_A = None, metric = 'euclidean', frac_other_time_samples = 0, linearization = False):
+    marginal_samples = extract_marginal_samples(X)
+    np.random.seed()
+    num_time_steps = len(marginal_samples)
+    d = marginal_samples[0].shape[1]
+    num_trajectories = marginal_samples[0].shape[0]
+    # transport plans
+    ps = []
+    for t in range(num_time_steps-1):
+        if frac_other_time_samples == 0:
+            # extract marginal samples
+            X_t = marginal_samples[t]
+            X_t1 = marginal_samples[t + 1]
+            a = np.ones(len(X_t)) / len(X_t)
+            b = np.ones(len(X_t1)) / len(X_t1)
+        else:
+            observations_sorted_by_time = flatten_trajectories_sequentially(X)
+            X_t = observations_sorted_by_time
+            X_t1 = observations_sorted_by_time
+            a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
+        # create cost matrix
+        if cur_est_A is None:
+            # optimize over empirical marginal transition
+            M = ot.dist(X_t, X_t1, metric='sqeuclidean')
+            # if t == 1:
+            #     print('cost matrix:', M)
+        else:
+            if linearization:
+                M = ot.dist(X_t + np.matmul(X_t, cur_est_A)*dt, X_t1, metric=metric)
+            else:
+                M = ot.dist(np.matmul(X_t, expm(cur_est_A * dt)), X_t1, metric=metric)
+        if entropy_reg == 0:
+            p = ot.emd(a= a, b= b, M=M/2)
+        else:
+            if cur_est_A is not None:
+                if linearization:
+                    cond_variance = entropy_reg
+                    # cond_variance = D * np.linalg.pinv(cur_est_A) * (cur_est_A * dt)
+                else:
+                    sigma_2 = entropy_reg / (2*dt)
+                    cond_variance = sigma_2 * np.linalg.pinv(cur_est_A) * (expm(2 * cur_est_A * dt)-1)
+                    cond_variance = np.linalg.det(cond_variance) # convert to scalar
+            else:
+                cond_variance = entropy_reg
+            if entropy_reg > sinkhorn_log_thresh:
+                p = ot.sinkhorn(a=a, b=b, M=M/2,#/2
+                                reg=cond_variance, verbose=False)
+            else:
+                p = ot.sinkhorn(a=a, b=b, M=M/2, #/2
+                                reg=cond_variance, verbose=False, method='sinkhorn_log')
+        ps.append(p)
+    if entropy_reg == 0:
+        N = num_trajectories
+    else:
+        N = max(5 * num_trajectories, 1000)
+    X_OT = np.zeros(shape=(N, num_time_steps, d))
+    OT_index_propagation = np.zeros(shape=(N, num_time_steps-1))
+    if frac_other_time_samples == 0:
+        indices = np.arange(num_trajectories)
+    else:
+        indices = np.arange(num_trajectories * num_time_steps)
+    for _ in range(N):
+        for t in range(num_time_steps-1):
+            pt_normalized = normalize_rows(ps[t])
+            if t == 0:
+                if entropy_reg == 0:
+                    k = _
+                else:
+                    k = np.random.randint(num_trajectories)
+                X_OT[_, 0, :] = marginal_samples[0][k]
+            else:
+                # retrieve where _th observation at time 0 was projected to at time t
+                k = int(OT_index_propagation[_, t-1])
+            j = np.random.choice(indices, p=pt_normalized[k])
+            OT_index_propagation[_, t] = int(j)
+            if frac_other_time_samples == 0:
+                X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
+            else:
+                X_OT[_, t + 1, :] = observations_sorted_by_time[j]
+    # if N < 10:
+    #     print(X_OT[:, :3, :])
+    return X_OT
+
+# def estimate_A_exp_ot_with_traj(X, dt, T=1, N_traj_sim = 1000, entropy_reg = 0.01, frac_other_time_samples = 0, sinkhorn_log_thresh=0.001, cur_est_A = None, metric = 'euclidean', estimate_G = False):
+#     X_OT = create_OT_traj(X, entropy_reg, dt, cur_est_A = cur_est_A, metric = metric, frac_other_time_samples = frac_other_time_samples)
+#     A_OT = estimate_A_exp(X_OT, dt)
+#     if estimate_G:
+#         G_OT = estimate_GGT(X_OT, T, est_A = A_OT)
+#         return A_OT, G_OT
+#     else:
+#         return A_OT
+
+def estimate_A_exp_ot_with_traj(X, dt, T=1, frac_other_time_samples=0,
+                                sinkhorn_log_thresh=0.001, cur_est_A=None, cur_est_D = None, estimate_G=True):
+    X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, frac_other_time_samples, linearization = True)
     A_OT = estimate_A_exp(X_OT, dt)
     if estimate_G:
-        G_OT = estimate_GGT(X_OT, T)
+        G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
         return A_OT, G_OT
     else:
         return A_OT
+
+
+
+
 def estimate_A_exp_ot(X, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True,
                       sinkhorn_log_thresh=0.1, return_OT_traj=False, pinv=False):
     """
@@ -324,7 +411,8 @@ def estimate_A_exp_ot(X, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True,
             M = ot.dist(X_t, X_t1, metric='sqeuclidean')
         else:
             # optimize over empirical marginal transition given current estimated A
-            M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
+            # M = ot.dist(X_t + np.dot(X_t, expm(cur_est_A * dt)), X_t1, metric='sqeuclidean')
+            M = ot.dist(X_t + np.dot(X_t, np.eye(d) + cur_est_A * dt), X_t1, metric='sqeuclidean')
 
         # Solve optimal transport problem
         if entropy_reg > 0:
@@ -377,41 +465,23 @@ def estimate_A_exp_ot(X, dt, entropy_reg=0.01, cur_est_A=None, use_raw_avg=True,
     else:
         return est_A
 
+def estimate_A_bibbona(X, dt, pinv = True):
+    num_trajectories, num_steps, d = X.shape
+    numerator = np.zeros((d,d))
+    denominator = np.zeros((d, d))
+    # compute mean
+    X_bar = np.mean(X)
+    for t in range(num_steps - 1):
+        for n in range(num_trajectories):
+            numerator += np.outer((X[n, t+1, :]-X_bar), (X[n, t, :]-X_bar))
+            denominator += np.outer(X[n, t, :]-X_bar, X[n, t, :]-X_bar)
+    if pinv:
+        partial = np.matmul(numerator, np.linalg.pinv(denominator))
+    else:
+        partial = left_Var_Equation(denominator, numerator)
+    return 1/dt * np.log(partial)
 
-# def estimate_A_exp(trajectories, dt, GGT=None):
-#     """
-#     Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
-#
-#     Parameters:
-#         trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
-#         dt (float): Discretization time step.
-#         GGT (optional): the Gram matrix of the diffusion matrix
-#
-#     Returns:
-#         numpy.ndarray: Estimated drift matrix A given the set of trajectories
-#     """
-#     num_trajectories, num_steps, d = trajectories.shape
-#     # A_hat = np.zeros((d, d))
-#     #
-#     # if GGT is None:
-#     #     GGT = np.eye(d)  # Use identity if no GGT provided
-#
-#     # Initialize cumulative sums
-#     sum_Edxt_Ext = np.zeros((d, d))
-#     sum_Ext_ExtT = np.zeros((d, d))
-#
-#     for t in range(num_steps - 1):
-#         sum_dxt_xt = np.zeros((d, d))
-#         sum_xt_xt = np.zeros((d, d))
-#         for trajectory in trajectories:
-#             sum_dxt_xt += np.outer(trajectory[t + 1] - trajectory[t], trajectory[t])
-#             sum_xt_xt += np.outer(trajectory[t], trajectory[t])
-#         sum_Edxt_Ext += sum_dxt_xt / num_trajectories
-#         sum_Ext_ExtT += sum_xt_xt / num_trajectories
-#     return np.matmul(sum_Edxt_Ext, np.linalg.pinv(sum_Ext_ExtT)) * (1 / dt)
-
-
-def estimate_A_exp(trajectories, dt, GGT=None, pinv=False):
+def estimate_A_exp(X, dt, GGT=None, pinv=True):
     """
     Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
 
@@ -423,12 +493,7 @@ def estimate_A_exp(trajectories, dt, GGT=None, pinv=False):
     Returns:
         numpy.ndarray: Estimated drift matrix A given the set of trajectories
     """
-    num_trajectories, num_steps, d = trajectories.shape
-    # A_hat = np.zeros((d, d))
-    #
-    # if GGT is None:
-    #     GGT = np.eye(d)  # Use identity if no GGT provided
-
+    num_trajectories, num_steps, d = X.shape
     # Initialize cumulative sums
     sum_Edxt_Ext = np.zeros((d, d))
     sum_Ext_ExtT = np.zeros((d, d))
@@ -436,13 +501,16 @@ def estimate_A_exp(trajectories, dt, GGT=None, pinv=False):
     for t in range(num_steps - 1):
         sum_dxt_xt = np.zeros((d, d))
         sum_xt_xt = np.zeros((d, d))
-        for trajectory in trajectories:
-            sum_dxt_xt += np.outer(trajectory[t + 1] - trajectory[t], trajectory[t])
-            sum_xt_xt += np.outer(trajectory[t], trajectory[t])
+        for n in range(num_trajectories):
+            xt = X[n, t, :]
+            dxt = X[n, t + 1, :] - X[n, t, :]
+            sum_dxt_xt += np.outer(dxt, xt)
+            sum_xt_xt += np.outer(xt, xt)
         sum_Edxt_Ext += sum_dxt_xt / num_trajectories
         sum_Ext_ExtT += sum_xt_xt / num_trajectories
 
     if pinv:
+        # return sum_Edxt_Ext / sum_Ext_ExtT * 1/ dt
         return np.matmul(sum_Edxt_Ext, np.linalg.pinv(sum_Ext_ExtT)) * (1 / dt)
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
@@ -488,8 +556,7 @@ def estimate_A(trajectories, dt, GGT=None):
 
     return A_hat
 
-
-def estimate_GGT(trajectories, T):
+def estimate_GGT(trajectories, T, est_A=None):
     """
     Estimate the matrix GG^T from multiple trajectories of a multidimensional
     Ornstein-Uhlenbeck process.
@@ -497,17 +564,23 @@ def estimate_GGT(trajectories, T):
     Parameters:
         trajectories (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
         T (float): Total time period.
+        est_A (numpy.ndarray, optional): Estimated drift matrix A. If provided, the increments will be adjusted by the deterministic drift.
 
     Returns:
         numpy.ndarray: Estimated GG^T matrix.
     """
     num_trajectories, num_steps, d = trajectories.shape
+    dt = T / num_steps
 
     # Initialize the GG^T matrix
     GGT = np.zeros((d, d))
 
-    # Compute increments ΔX for each trajectory
-    increments = np.diff(trajectories, axis=1)
+    if est_A is None:
+        # Compute increments ΔX for each trajectory (no drift adjustment)
+        increments = np.diff(trajectories, axis=1)
+    else:
+        # Adjust increments by subtracting the deterministic drift: ΔX - A * X_t * dt
+        increments = np.diff(trajectories, axis=1) - np.matmul(trajectories[:, :-1, :], est_A) * dt
 
     # Sum up the products of increments for each dimension pair across all trajectories and steps
     for i in range(d):
@@ -515,8 +588,125 @@ def estimate_GGT(trajectories, T):
             GGT[i, j] = np.sum(increments[:, :, i] * increments[:, :, j])
 
     # Divide by total time T*num_trajectories to normalize
-    GGT /= T * num_trajectories
+    GGT /= (T - dt) * num_trajectories
     return GGT
+
+
+def estimate_GGT_(X, T, est_A = None):
+    """
+    Estimate the matrix GG^T from multiple trajectories of a multidimensional
+    Ornstein-Uhlenbeck process.
+
+    Parameters:
+        X (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
+        T (float): Total time period.
+
+    Returns:
+        numpy.ndarray: Estimated GG^T matrix.
+    """
+    num_trajectories, num_steps, d = X.shape
+
+    dt = T/num_steps
+
+    # Initialize the GG^T matrix
+    GGT = np.zeros((d, d))
+
+
+    # Sum up the products of increments for each dimension pair across all trajectories and steps
+    for t in range(num_steps-1):
+        for i in range(d):
+            for j in range(d):
+                if est_A is None:
+                    dX_i = X[:, t+1, i] - X[:, t, i]
+                    dX_j = X[:, t+1, j] - X[:, t, j]
+                else:
+                    dX = X[:, t+1, :] - X[:, t, :] - np.matmul(X[:, t, :], est_A)*dt
+                    #X[:, t+1, :] - X[:, t, :] - np.matmul(X[:, t, :], est_A)*dt
+                    dX_i = dX[:, i]
+                    dX_j = dX[:, j]
+                for n in range(num_trajectories):
+                    GGT[i, j] += dX_i[n]*dX_j[n]   # np.sum(increments[:, :, i] * increments[:, :, j])
+                    # Divide by total time T*num_trajectories to normalize
+    GGT /= (T - dt) * num_trajectories
+    return GGT
+
+
+def estimate_GGT_split(X, T, est_A = None):
+    """
+    Estimate the matrix GG^T from multiple trajectories of a multidimensional
+    Ornstein-Uhlenbeck process.
+
+    Parameters:
+        X (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
+        T (float): Total time period.
+
+    Returns:
+        numpy.ndarray: Estimated GG^T matrix.
+    """
+    num_trajectories, num_steps, d = X.shape
+
+    dt = T/num_steps
+
+    # Initialize the GG^T matrix
+    GGT = np.zeros((d, d))
+
+    counter = 0
+
+
+    # Sum up the products of increments for each dimension pair across all trajectories and steps
+    for i in range(d):
+        for j in range(d):
+            for t in range(num_steps-1):
+                if est_A is None:
+                    dX_i = X[:, t+1, i] - X[:, t, i]
+                    dX_j = X[:, t+1, j] - X[:, t, j]
+                else:
+                    dX = X[:, t+1, :] - X[:, t, :] - np.matmul(X[:, t, :], est_A)*dt
+                    #X[:, t+1, :] - X[:, t, :] - np.matmul(X[:, t, :], est_A)*dt
+                    dX_i = dX[:, i]
+                    dX_j = dX[:, j]
+                for n in range(num_trajectories):
+                    if dX_i[n] > 0 and dX_j[n] > 0:
+                        counter += 1
+                        GGT[i, j] += dX_i[n] * dX_j[n]   # np.sum(increments[:, :, i] * increments[:, :, j])
+                    # Divide by total time T*num_trajectories to normalize
+    print('counter:', counter)
+    GGT /= (dt) * counter
+    return GGT
+
+def estimate_A_exp_split(X, dt, GGT=None, pinv=True):
+    """
+    Calculate the closed form estimator A_hat using observed data from multiple trajectories using the expectation formulation.
+
+    Parameters:
+        trajectories (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+        dt (float): Discretization time step.
+        GGT (optional): the Gram matrix of the diffusion matrix
+
+    Returns:
+        numpy.ndarray: Estimated drift matrix A given the set of trajectories
+    """
+    num_trajectories, num_steps, d = X.shape
+    # Initialize cumulative sums
+    sum_Edxt_Ext = np.zeros((d, d))
+    sum_Ext_ExtT = np.zeros((d, d))
+    counter = 0
+    for t in range(num_steps - 1):
+        sum_dxt_xt = np.zeros((d, d))
+        sum_xt_xt = np.zeros((d, d))
+        for n in range(num_trajectories):
+            if X[n, t + 1, :] - X[n, t, :] < 0:
+                counter += 1
+                sum_dxt_xt += np.matmul(X[n, t + 1, :] - X[n, t, :], np.transpose(X[n, t, :]))
+                sum_xt_xt += np.matmul(X[n, t, :], np.transpose(X[n, t, :]))
+        sum_Edxt_Ext += sum_dxt_xt #/ num_trajectories
+        sum_Ext_ExtT += sum_xt_xt #/ num_trajectories
+
+    if pinv:
+        # return sum_Edxt_Ext / sum_Ext_ExtT * 1/ dt
+        return np.matmul(sum_Edxt_Ext, np.linalg.pinv(sum_Ext_ExtT)) * (1 / dt)
+    else:
+        return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
 
 def left_Var_Equation(A1, B1):
@@ -547,59 +737,6 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-def plot_comparison(X, X_OT, X_OT_reg, trajectory_index=0):
-    """
-    Plot the true trajectory vs. OT-predicted trajectories for different entropy regularizations.
-
-    Parameters:
-        X (numpy.ndarray): True trajectories.
-        X_OT (numpy.ndarray): OT-predicted trajectories with no entropy regularization.
-        X_OT_reg (numpy.ndarray): OT-predicted trajectories with entropy regularization.
-        trajectory_index (int): Index of the trajectory to plot.
-    """
-    num_time_steps, d = X.shape[1], X.shape[2]
-
-    plt.figure(figsize=(10, 6))
-    for dim in range(d):
-        plt.subplot(d, 1, dim + 1)
-        plt.plot(np.arange(num_time_steps), X[trajectory_index, :, dim], 'k-',
-                 label='True Trajectory' if dim == 0 else "")
-        plt.plot(np.arange(num_time_steps), X_OT[trajectory_index, :, dim], 'r--',
-                 label='OT Predicted (No Reg)' if dim == 0 else "")
-        plt.plot(np.arange(num_time_steps), X_OT_reg[trajectory_index, :, dim], 'b-.',
-                 label='OT Predicted (Reg)' if dim == 0 else "")
-        plt.xlabel('Time Step')
-        plt.ylabel(f'Trajectory Value (Dim {dim + 1})')
-        plt.title(f'Trajectory {trajectory_index}, Dimension {dim + 1}')
-        if dim == 0:
-            plt.legend()
-    plt.tight_layout()
-    plt.show()
 
 
-def plot_fuck(X, X_shuffled, trajectory_index=0):
-    """
-    Plot the true trajectory vs. OT-predicted trajectories for different entropy regularizations.
 
-    Parameters:
-        X (numpy.ndarray): True trajectories.
-        X_OT (numpy.ndarray): OT-predicted trajectories with no entropy regularization.
-        X_OT_reg (numpy.ndarray): OT-predicted trajectories with entropy regularization.
-        trajectory_index (int): Index of the trajectory to plot.
-    """
-    num_time_steps, d = X.shape[1], X.shape[2]
-
-    plt.figure(figsize=(10, 6))
-    for dim in range(d):
-        plt.subplot(d, 1, dim + 1)
-        plt.plot(np.arange(num_time_steps), X[trajectory_index, :, dim], 'k-',
-                 label='True Trajectory' if dim == 0 else "")
-        plt.plot(np.arange(num_time_steps), X_shuffled[trajectory_index, :, dim], 'r--',
-                 label='shuffled' if dim == 0 else "")
-        plt.xlabel('Time Step')
-        plt.ylabel(f'Trajectory Value (Dim {dim + 1})')
-        plt.title(f'Trajectory {trajectory_index}, Dimension {dim + 1}')
-        if dim == 0:
-            plt.legend()
-    plt.tight_layout()
-    plt.show()

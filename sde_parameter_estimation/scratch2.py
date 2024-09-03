@@ -1,15 +1,6 @@
-import numpy as np
-import ot
-from plots import *
-import matplotlib.pyplot as plt
-from utils import *
-import pickle
-import math
 from parameter_estimation import *
 from simulate_trajectories import *
 import matplotlib.pyplot as plt
-import os
-
 
 
 def analyze_X_OT(marginal_samples, dt, entropy_reg, num_trajectories, d, use_raw_avg=True, filename=None):
@@ -73,31 +64,32 @@ if __name__ == "__main__":
     T = 1
     G = 1
     N_= 20
-    X = np.load(f'X0-1_paths_nullgrowth_d-1_from_N-20_A-[[1]]_G-1_dt-0.01.npy')
+    method = 'MFL'
+    X = np.load(f'/Users/guan/Downloads/2000_its_MFL_X0-1_paths_nullgrowth_d-1_from_N-5000_A-[[1]]_G-1.0_dt-0.01_lambdaReg-0.0001.npy')
     dt = T/X.shape[1]
     print(dt)
     for N in [500, 1000, 5000]:
         X_ = X[:N, :, :]
          #ou_process(T, dt, A_, G, X0)
         # plot_trajectories(X, T, dt)
-        # plot_trajectories(X_[0], T, dt)
-        for j in range(10):
-            X0 = X_[j, 0, :]
-            A_ = np.array([[A]])
-            G_ = np.array([[G]])
+        plot_trajectories(X_[N-1], T, dt)
+        # for j in range(10):
+        #     X0 = X_[j, 0, :]
+        #     A_ = np.array([[A]])
+        #     G_ = np.array([[G]])
             # X = multiple_ou_trajectories(N, 1, T, dt, A_, G_, X0=X0)
             # print(X.shape)
             # plot_comparison(X, X_, j)
 
 
         A_est = estimate_A_exp(X_, dt)
-        print('GWOT estimated A:', A_est[0][0])
+        print(f'{method} estimated A:', A_est[0][0])
         # print('MSE:',  np.mean((A_est - A) ** 2))
-        print(f'A bias for {N} GWOT trajectories:', A_est[0][0]-A)
+        print(f'A bias for {N} {method} trajectories:', A_est[0][0]-A)
         G_est = estimate_GGT(X_, T)
-        print('GWOT estimated G^2:', G_est[0][0])
+        print(f'{method} estimated G^2:', G_est[0][0])
         # print(G_est)
-        print(f'G bias for {N} GWOT trajectories:',G_est[0][0]-G**2)
+        print(f'G bias for {N} {method} trajectories:',G_est[0][0]-G**2)
 
     # # Example usage
     # dt = 0.02

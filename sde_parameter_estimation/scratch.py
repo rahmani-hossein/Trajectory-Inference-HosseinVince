@@ -1,27 +1,24 @@
 import matplotlib as plt
 from parameter_estimation import *
-import utils
-from plots import plot_trajectories
-import pickle
 from simulate_trajectories import *
 
 if __name__ == "__main__":
     # Example usage:
     N = 5000
-    n_sdes = 1
+    n_sdes = 50
     d=1
     T=1
     dt=0.02
-    num_steps_truncate = 50
+    # num_steps_truncate = 1000
     N_truncate = 20
-    N_plot = 0
+    N_plot = 10
     A_biases, G_biases = [], []
     # f"seed-42_X0-none_d-1_n_sdes-1_dt-0.02_N-1000_T-1.0"
-    filename = "seed-43_X0-ones_d-1_n_sdes-1_dt-0.02_N-1000_T-1.0"#f"seed-2_X0-ones_d-{d}_n_sdes-{n_sdes}_dt-{dt}_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
+    filename = 'seed-420_X0-none_d-1_n_sdes-10_dt-0.02_N-20_T-1.0' #"seed-43_X0-ones_d-1_n_sdes-1_dt-0.02_N-1000_T-1.0"#f"seed-2_X0-ones_d-{d}_n_sdes-{n_sdes}_dt-{dt}_N-1000_T-1.0"#f"unkilled_seed-0_d-{d}_n_sdes-10_dt-0.02_N-{N}_T-1.0"
     A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt = utils.load_measurement_data(filename)
     for idx in range(n_sdes):
     # idx = 2
-        X = maximal_X_measured_list[idx][:N_truncate, :num_steps_truncate, :]
+        X = maximal_X_measured_list[idx][:N_truncate, :, :]
         # for j in range(10):
         #     plot_trajectories(X[j], T, dt)
         A = A_trues[idx]
@@ -37,10 +34,11 @@ if __name__ == "__main__":
         # plot_trajectories(X[0], T, dt)
         shuffle = True
         reg = dt
-        shuffled_X = np.zeros((N_truncate, num_steps_truncate, d))
+        num_steps = 1/dt
+        shuffled_X = np.zeros((N_truncate, num_steps, d))
         # Fill shuffled_X with shuffled marginal samples
         shuffled_samples = extract_marginal_samples(X, shuffle=True)
-        for i in range(num_steps_truncate):
+        for i in range(num_steps):
             shuffled_X[:, i, :] = shuffled_samples[i]
         # for j in range(N_plot):
         #     plot_fuck(X, shuffled_X, trajectory_index=j)
@@ -52,7 +50,7 @@ if __name__ == "__main__":
         # X_OT_reg = estimate_next_step_OT(X, dt, entropy_reg=reg, shuffle= shuffle)
         raw_avg = True
         # A_OT_reg, X_OT_reg = estimate_A_exp_ot(shuffled_samples, dt, entropy_reg=reg, return_OT_traj = True, use_raw_avg=raw_avg)
-        X_OT_reg = create_OT_traj(shuffled_samples, reg, N)
+        X_OT_reg = create_OT_traj(shuffled_samples, reg, dt, cur_est_A = None, metric = 'sqeuclidean')
         print(X_OT_reg.shape)
         A_OT_reg = estimate_A_exp(X_OT_reg, dt)
         GG_T_OT_reg = estimate_GGT(X_OT_reg, T)
@@ -281,7 +279,6 @@ def generate_negative_eigenvalue_matrix(dimension):
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import pearsonr
 
 # Parameters
 A = 1  # Drift coefficient

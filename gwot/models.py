@@ -11,7 +11,6 @@ import dill
 from scipy.sparse.linalg import aslinearoperator, eigs, LinearOperator
 from numpy import matrix
 
-
 from gwot.lambertw import lambertw
 from gwot.ts import TimeSeries
 from gwot.sim import Simulation

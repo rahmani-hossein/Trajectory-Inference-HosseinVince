@@ -6,8 +6,42 @@ matplotlib.use('TkAgg')  # Use TkAgg backend for interactive display
 import matplotlib.pyplot as plt
 
 
+def plot_true_vs_estimated(A_trues, A_estimations):
+    """
+    Plots all true matrices A against their estimated matrices A for each method.
+
+    Parameters:
+    - A_trues: List or array of true matrices A.
+    - A_estimations: Dictionary of estimated matrices A with methods as keys.
+    """
+    for method, estimations in A_estimations.items():
+        plt.figure(figsize=(8, 8))
+
+        # Aggregate all true and estimated values for the current method
+        true_values = []
+        estimated_values = []
+
+        for i, A_hat in enumerate(estimations):
+            A_true = A_trues[i]
+            true_values.extend(A_true.flatten())
+            estimated_values.extend(A_hat.flatten())
+
+        # Convert lists to arrays for plotting
+        true_values = np.array(true_values)
+        estimated_values = np.array(estimated_values)
+
+        plt.scatter(true_values, estimated_values, alpha=0.6, label=f'{method} Estimation')
+        plt.plot([true_values.min(), true_values.max()], [true_values.min(), true_values.max()], 'r--', lw=2, label='Perfect Estimation')
+        plt.xlabel('True A Values')
+        plt.ylabel('Estimated A Values')
+        plt.title(f'True vs Estimated A Values for {method}')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+
 def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_errs, list_method_labels, d,
-             experiment_name, save_plot = True, parameter_name = 'A'):
+             experiment_name, save_plot = True, parameter_name = 'A', display_plot = True):
     """
     Plot and save Mean Squared Error (MSE) results.
 
@@ -53,10 +87,11 @@ def plot_MSE(ablation_values, ablation_variable_name, list_mse_scores, list_std_
         filepath = os.path.join('../MSE_plots', plot_filename)
         plt.savefig(filepath)
 
-    # Show plot
-    plt.show()
+    if display_plot:
+        # Show plot
+        plt.show()
 
-def plot_trajectories(X, T, dt, save_file = False):
+def plot_trajectory(X, T, dt, save_file = False):
     """
     Plot the trajectories of a multidimensional process.
 
@@ -72,6 +107,42 @@ def plot_trajectories(X, T, dt, save_file = False):
     plt.figure(figsize=(12, 8))
     for d in range(num_dimensions):
         plt.plot(time_steps, X[:, d], label=f'X_{d+1}')
+
+
+    # plt.title('Manten path dependent example', fontsize=20)
+    plt.xlabel('Time', fontsize=16)
+    plt.ylabel('Value', fontsize=16)
+    plt.legend(fontsize=14)
+    plt.grid(True)
+    plt.tight_layout()
+    if save_file:
+        os.makedirs('Raw_trajectory_figures', exist_ok=True)
+        plot_filename = os.path.join('Raw_trajectory_figures', f"raw_trajectory_d-{num_dimensions}_stationary.png")
+        plt.savefig(plot_filename)
+    plt.show()
+
+def plot_trajectories(X, T, dt, save_file = False, N_truncate = None):
+    """
+    Plot the trajectories of a multidimensional process.
+
+    Parameters:
+        X (numpy.ndarray): Array of trajectories.
+        T (float): Total time period.
+        dt (float): Time step size.
+    """
+    num_trajectories, num_steps, num_dimensions = X.shape
+    if N_truncate is not None:
+        num_trajectories = N_truncate
+
+    time_steps = np.linspace(0, T, num_steps)  # Generate time steps corresponding to [0, T]
+
+    # Plot trajectories
+    plt.figure(figsize=(12, 8))
+
+
+    for n in range(num_trajectories):
+        for d in range(num_dimensions):
+            plt.plot(time_steps, X[n, :, d ], label=f'{n}th trajectory dim {d}')
 
 
     # plt.title('Manten path dependent example', fontsize=20)
@@ -116,4 +187,34 @@ def plot_covariance_functions(X, T, dt, A, G):
     plt.ylabel('Covariance', fontsize=16)
     plt.legend(fontsize=14)
     plt.grid(True)
+    plt.show()
+
+
+def plot_comparison(X, X_OT, X_OT_reg, trajectory_index=0):
+    """
+    Plot the true trajectory vs. OT-predicted trajectories for different entropy regularizations.
+
+    Parameters:
+        X (numpy.ndarray): True trajectories.
+        X_OT (numpy.ndarray): OT-predicted trajectories with no entropy regularization.
+        X_OT_reg (numpy.ndarray): OT-predicted trajectories with entropy regularization.
+        trajectory_index (int): Index of the trajectory to plot.
+    """
+    num_time_steps, d = X.shape[1], X.shape[2]
+
+    plt.figure(figsize=(10, 6))
+    for dim in range(d):
+        plt.subplot(d, 1, dim + 1)
+        plt.plot(np.arange(num_time_steps), X[trajectory_index, :, dim], 'k-',
+                 label='True Trajectory' if dim == 0 else "")
+        plt.plot(np.arange(num_time_steps), X_OT[trajectory_index, :, dim], 'r--',
+                 label='OT Predicted (No Reg)' if dim == 0 else "")
+        plt.plot(np.arange(num_time_steps), X_OT_reg[trajectory_index, :, dim], 'b-.',
+                 label='OT Predicted (Reg)' if dim == 0 else "")
+        plt.xlabel('Time Step')
+        plt.ylabel(f'Trajectory Value (Dim {dim + 1})')
+        plt.title(f'Trajectory {trajectory_index}, Dimension {dim + 1}')
+        if dim == 0:
+            plt.legend()
+    plt.tight_layout()
     plt.show()
