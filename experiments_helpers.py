@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import expm
 import time
 import pickle
+from scipy.stats import multivariate_normal
 
 
 def generate_independent_points(d, num_points, min_magnitude=0, max_magnitude=10, min_angle_degrees=30):
@@ -464,11 +465,11 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
             a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
 
         K = np.zeros((num_trajectories, num_trajectories))
-        # Compute Cholesky factorization of D * dt
-        if np.linalg.det(D) != 0:
-            for i in range(d):
-                D[i,i] += 1e-8
-        inv_D_dt = np.linalg.lstsq(D.T * dt, np.eye(D.shape[0]), rcond=None)[0]#np.linalg.pinv(D * dt)
+
+        # if np.linalg.det(D) != 0:
+        #     for i in range(d):
+        #         D[i,i] += 1e-8
+        # inv_D_dt = np.linalg.lstsq(D.T * dt, np.eye(D.shape[0]), rcond=None)[0]#np.linalg.pinv(D * dt)
         for i in range(num_trajectories):
             for j in range(num_trajectories):
                 t1 = time.time()
@@ -479,10 +480,20 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
                 else:
                     dX = X_t1[j] - np.matmul(expm(cur_est_A * dt), X_t[i])
                 dX = dX.reshape(-1, 1)  # Reshape to a column vector
-                if np.linalg.det(D) != 0:
-                    K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
-                else:
-                    K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
+                # if np.linalg.det(D) != 0:
+                #     K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
+                # else:
+                #     K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
+                # Compute the multivariate normal PDF (dmvnorm equivalent)
+                Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+
+                # If the sum of Ki is zero, regularize the covariance matrix by adding a small value to the diagonal
+                if np.sum(Ki) == 0:
+                    D += np.eye(D.shape[0]) * epsilon
+                    Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+
+                # Store the result in the K matrix
+                K[i, j] = Ki
                 t2 = time.time()
                 K_time += t2 - t1
         t1 = time.time()
