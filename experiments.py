@@ -220,9 +220,9 @@ def run_experiment_3_iterates(num_iterates=10, version=2, linearization=True):
 
     print(f'All iterates of experiment 3 completed and saved to {filename}')
 
-# # Run the experiments
-# run_experiment_3_iterates(num_iterates=10, version=1, linearization=True)
-# run_experiment_3_iterates(num_iterates=10, version=2, linearization=True)
+# Run the experiments
+run_experiment_3_iterates(num_iterates=10, version=1, linearization=True)
+run_experiment_3_iterates(num_iterates=10, version=2, linearization=True)
 
 # Run the experiments
 run_experiment_1_iterates(num_iterates=10, version=1, linearization=True)

@@ -434,7 +434,6 @@ def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9):
             break
     return tmp
 
-
 def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linearization=True):
     marginal_samples = extract_marginal_samples(X)
     np.random.seed()
@@ -447,6 +446,7 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
     ps = []
     sinkhorn_time = 0
     K_time = 0
+    epsilon =  1e-8
     for t in range(num_time_steps - 1):
         if frac_other_time_samples == 0:
             # extract marginal samples
@@ -479,21 +479,29 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
                     dX = X_t1[j] - X_t[i] - np.matmul(cur_est_A * dt, X_t[i])
                 else:
                     dX = X_t1[j] - np.matmul(expm(cur_est_A * dt), X_t[i])
-                dX = dX.reshape(-1, 1)  # Reshape to a column vector
+                dX = dX.flatten()#dX.reshape(-1, 1)  # Reshape to a column vector
                 # if np.linalg.det(D) != 0:
                 #     K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
                 # else:
                 #     K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
                 # Compute the multivariate normal PDF (dmvnorm equivalent)
-                Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+                try:
+                    Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+                except np.linalg.LinAlgError as e:
+                    print(f"Numerical issue in multivariate normal pdf")
+                    Ki = 0
 
                 # If the sum of Ki is zero, regularize the covariance matrix by adding a small value to the diagonal
                 if np.sum(Ki) == 0:
                     D += np.eye(D.shape[0]) * epsilon
-                    Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+                    try:
+                        Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+                    except np.linalg.LinAlgError as e:
+                        print(f"Numerical issue in multivariate normal pdf")
+                        Ki = 0
 
                 # Store the result in the K matrix
-                K[i, j] = Ki
+                K[i, j] = float(Ki)
                 t2 = time.time()
                 K_time += t2 - t1
         t1 = time.time()
