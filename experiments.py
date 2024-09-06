@@ -1,5 +1,6 @@
 from experiments_helpers import *
 
+
 def default_measurement_settings():
     dt = 0.02
     dt_EM = 0.001
@@ -66,7 +67,7 @@ def run_experiment_1_iterates(num_iterates=10, version=2, linearization=True):
             print(point, "Magnitude:", np.linalg.norm(point))
 
         # Run the experiment with the generated points
-        results_data = run_experiment_2(points, version=version, linearization=linearization)
+        results_data = run_experiment_1(points, version=version, linearization=linearization)
 
         # Save the result in the dictionary with the experiment number as the key
         all_results[i] = results_data
@@ -94,11 +95,10 @@ def run_experiment_2(points, version = 1, linearization = True):
     print('estimating parameters')
     max_its = 50
     its = 1
-    mean = np.trace(np.matmul(G, G.T))/d
-    matrix = np.zeros((d, d))
+    mean = np.trace(np.matmul(G, G.T)) / d
     # Fill the diagonal
-    np.fill_diagonal(matrix, np.random.uniform(low=mean * 0.1, high=mean * 10, size=d))
-    initial_D = matrix
+    random_scale = np.random.uniform(low=mean * 0.1, high=mean * 10)
+    initial_D = random_scale * np.eye(d)
     print('initial guess for D:', initial_D)
     est_A_list, est_GGT_list = [], []
     est_A, est_GGT, X_OT = estimate_A_exp_ot_with_traj(X_measured, dt, T, cur_est_D=initial_D)
@@ -166,11 +166,10 @@ def run_experiment_3(points, version = 1, linearization = True):
     print('estimating parameters')
     max_its = 50
     its = 1
-    mean = np.trace(np.matmul(G, G.T))/d
-    matrix = np.zeros((d, d))
+    mean = np.trace(np.matmul(G, G.T)) / d
     # Fill the diagonal
-    np.fill_diagonal(matrix, np.random.uniform(low=mean * 0.1, high=mean * 10, size=d))
-    initial_D = matrix
+    random_scale = np.random.uniform(low=mean * 0.1, high=mean * 10)
+    initial_D = random_scale * np.eye(d)
     print('initial guess for D:', initial_D)
     est_A_list, est_GGT_list = [], []
     est_A, est_GGT, X_OT = estimate_A_exp_ot_with_traj(X_measured, dt, T, cur_est_D=initial_D)
@@ -219,11 +218,11 @@ def run_experiment_3_iterates(num_iterates=10, version=2, linearization=True):
     with open(filename, 'wb') as f:
         pickle.dump(all_results, f)
 
-    print(f'All iterates of experimetn 3 completed and saved to {filename}')
+    print(f'All iterates of experiment 3 completed and saved to {filename}')
 
-# Run the experiments
-run_experiment_3_iterates(num_iterates=10, version=1, linearization=True)
-run_experiment_3_iterates(num_iterates=10, version=2, linearization=True)
+# # Run the experiments
+# run_experiment_3_iterates(num_iterates=10, version=1, linearization=True)
+# run_experiment_3_iterates(num_iterates=10, version=2, linearization=True)
 
 # Run the experiments
 run_experiment_1_iterates(num_iterates=10, version=1, linearization=True)
