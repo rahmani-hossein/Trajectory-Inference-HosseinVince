@@ -19,8 +19,8 @@ def run_experiment_1(points, version = 1, linearization = True):
     X0_dist = [(point, 1 / len(points)) for point in points]
     print(rf'Generating data for experiment 1: $dX_t = {A} X_t \, dt + {G} \, dW_t$')
     print(rf'X0 is initialised uniformly from the points: {points}')
-    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
-                                              matrix_exponential=True)
+    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt_EM, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
+                                              matrix_exponential=False)
     # plot_trajectories(X_measured_2, T=1, dt=0.02, save_file=False, N_truncate=5)
     print('estimating parameters')
     max_its = 50
@@ -89,8 +89,8 @@ def run_experiment_2(points, version = 1, linearization = True):
     X0_dist = [(point, 1 / len(points)) for point in points]
     print(rf'Generating data for experiment 2: $dX_t = {A} X_t \, dt + {G} \, dW_t$')
     print(rf'X0 is initialised uniformly from the points: {points}')
-    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
-                                              matrix_exponential=True)
+    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt_EM, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
+                                              matrix_exponential=False)
     # plot_trajectories(X_measured_2, T=1, dt=0.02, save_file=False, N_truncate=5)
     print('estimating parameters')
     max_its = 50
@@ -160,8 +160,8 @@ def run_experiment_3(points, version = 1, linearization = True):
     X0_dist = [(point, 1 / len(points)) for point in points]
     print(rf'Generating data for experiment 3: $dX_t = {A} X_t \, dt + {G} \, dW_t$')
     print(rf'X0 is initialised uniformly from the points: {points}')
-    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
-                                              matrix_exponential=True)
+    X_measured = linear_additive_noise_data(N, d=d, T=1, dt_EM=dt_EM, dt=dt, A= A, G =G, X0_dist=X0_dist, stationary=False,
+                                              matrix_exponential=False)
     # plot_trajectories(X_measured_2, T=1, dt=0.02, save_file=False, N_truncate=5)
     print('estimating parameters')
     max_its = 50
@@ -224,9 +224,9 @@ def run_experiment_3_iterates(num_iterates=10, version=2, linearization=True):
 run_experiment_3_iterates(num_iterates=10, version=1, linearization=True)
 run_experiment_3_iterates(num_iterates=10, version=2, linearization=True)
 
-# Run the experiments
-run_experiment_1_iterates(num_iterates=10, version=1, linearization=True)
-run_experiment_1_iterates(num_iterates=10, version=2, linearization=True)
+# # Run the experiments
+# run_experiment_1_iterates(num_iterates=10, version=1, linearization=True)
+# run_experiment_1_iterates(num_iterates=10, version=2, linearization=True)
 
 # Run the experiments
 run_experiment_2_iterates(num_iterates=10, version=1, linearization=True)

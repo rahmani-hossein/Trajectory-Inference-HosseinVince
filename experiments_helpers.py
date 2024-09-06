@@ -134,11 +134,9 @@ def ou_process_matrix_exponential(T, dt, A, G, X0, seed=None):
 
         # Deterministic part
         X_det = np.dot(exp_At, X[i - 1])
-
         # Stochastic part
         dWs = np.random.normal(0, np.sqrt(dt), size=G.shape[1])
         X_sto = np.dot(expm(A * (dt)), G @ dWs)
-
         # Sum deterministic and stochastic parts
         X[i] = X_det + X_sto
 
@@ -434,6 +432,7 @@ def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9):
             break
     return tmp
 
+
 def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linearization=True):
     marginal_samples = extract_marginal_samples(X)
     np.random.seed()
@@ -454,56 +453,55 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
             X_t1 = marginal_samples[t + 1]
             a = np.ones(len(X_t)) / len(X_t)
             b = np.ones(len(X_t1)) / len(X_t1)
-            # if cur_est_A is not None:
-            #     M = ot.dist(X_t + np.matmul(X_t, cur_est_A) * dt, X_t1, metric='sqeuclidean')
-            # else:
-            #     M = ot.dist(X_t, X_t1, metric = 'sqeuclidean')
         else:
             observations_sorted_by_time = flatten_trajectories_sequentially(X)
             X_t = observations_sorted_by_time
             X_t1 = observations_sorted_by_time
             a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
 
+
+        '''
+        seems decent but slow
+        '''
+        # Precompute reusable terms
+        if cur_est_A is None:
+            cur_est_A = np.zeros((d, d))  # Set Brownian motion as reference SDE if no A inputted
+
+        A_dt = cur_est_A * dt if linearization else expm(cur_est_A * dt)
+        if linearization:
+            A_X_t = np.matmul(cur_est_A * dt, X_t.T)
+
+        # Regularize D once before the loop
+        D += np.eye(D.shape[0]) * epsilon
+
         K = np.zeros((num_trajectories, num_trajectories))
 
-        # if np.linalg.det(D) != 0:
-        #     for i in range(d):
-        #         D[i,i] += 1e-8
-        # inv_D_dt = np.linalg.lstsq(D.T * dt, np.eye(D.shape[0]), rcond=None)[0]#np.linalg.pinv(D * dt)
         for i in range(num_trajectories):
             for j in range(num_trajectories):
                 t1 = time.time()
-                if cur_est_A is None:
-                    cur_est_A = np.zeros((d, d))  # set Brownian motion as reference SDE if no A inputted
+
                 if linearization:
-                    dX = X_t1[j] - X_t[i] - np.matmul(cur_est_A * dt, X_t[i])
+                    dX_ij = X_t1[j] - X_t[i] - A_X_t[:, i]
                 else:
-                    dX = X_t1[j] - np.matmul(expm(cur_est_A * dt), X_t[i])
-                dX = dX.flatten()#dX.reshape(-1, 1)  # Reshape to a column vector
-                # if np.linalg.det(D) != 0:
-                #     K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
-                # else:
-                #     K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
-                # Compute the multivariate normal PDF (dmvnorm equivalent)
+                    dX_ij = X_t1[j] - np.matmul(A_dt, X_t[i])
+
+                dX_ij = dX_ij.flatten()
+
                 try:
-                    Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+                    Ki = multivariate_normal.pdf(dX_ij, mean=np.zeros(d), cov=D * dt)
                 except np.linalg.LinAlgError as e:
                     print(f"Numerical issue in multivariate normal pdf")
                     Ki = 0
 
-                # If the sum of Ki is zero, regularize the covariance matrix by adding a small value to the diagonal
-                if np.sum(Ki) == 0:
-                    D += np.eye(D.shape[0]) * epsilon
-                    try:
-                        Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
-                    except np.linalg.LinAlgError as e:
-                        print(f"Numerical issue in multivariate normal pdf")
-                        Ki = 0
-
                 # Store the result in the K matrix
                 K[i, j] = float(Ki)
+
                 t2 = time.time()
                 K_time += t2 - t1
+
+        '''
+        end of seems decent but slow
+        '''
         t1 = time.time()
         # if True:
         p = sinkhorn_multidimensional(a=a, b=b, K=K)
@@ -542,7 +540,115 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
     print('Time doing Sinkhorn:', sinkhorn_time)
     print('Time creating trajectories', ot_traj_time)
     return X_OT
-
+# def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linearization=True):
+#     marginal_samples = extract_marginal_samples(X)
+#     np.random.seed()
+#     num_time_steps = len(marginal_samples)
+#     d = marginal_samples[0].shape[1]
+#     if D is None:
+#         D = np.eye(d)
+#     num_trajectories = marginal_samples[0].shape[0]
+#     # transport plans
+#     ps = []
+#     sinkhorn_time = 0
+#     K_time = 0
+#     epsilon =  1e-8
+#     for t in range(num_time_steps - 1):
+#         if frac_other_time_samples == 0:
+#             # extract marginal samples
+#             X_t = marginal_samples[t]
+#             X_t1 = marginal_samples[t + 1]
+#             a = np.ones(len(X_t)) / len(X_t)
+#             b = np.ones(len(X_t1)) / len(X_t1)
+#             # if cur_est_A is not None:
+#             #     M = ot.dist(X_t + np.matmul(X_t, cur_est_A) * dt, X_t1, metric='sqeuclidean')
+#             # else:
+#             #     M = ot.dist(X_t, X_t1, metric = 'sqeuclidean')
+#         else:
+#             observations_sorted_by_time = flatten_trajectories_sequentially(X)
+#             X_t = observations_sorted_by_time
+#             X_t1 = observations_sorted_by_time
+#             a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
+#
+#         K = np.zeros((num_trajectories, num_trajectories))
+#
+#         # if np.linalg.det(D) != 0:
+#         #     for i in range(d):
+#         #         D[i,i] += 1e-8
+#         # inv_D_dt = np.linalg.lstsq(D.T * dt, np.eye(D.shape[0]), rcond=None)[0]#np.linalg.pinv(D * dt)
+#         for i in range(num_trajectories):
+#             for j in range(num_trajectories):
+#                 t1 = time.time()
+#                 if cur_est_A is None:
+#                     cur_est_A = np.zeros((d, d))  # set Brownian motion as reference SDE if no A inputted
+#                 if linearization:
+#                     dX = X_t1[j] - X_t[i] - np.matmul(cur_est_A * dt, X_t[i])
+#                 else:
+#                     dX = X_t1[j] - np.matmul(expm(cur_est_A * dt), X_t[i])
+#                 dX = dX.flatten()#dX.reshape(-1, 1)  # Reshape to a column vector
+#                 # if np.linalg.det(D) != 0:
+#                 #     K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
+#                 # else:
+#                 #     K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
+#                 # Compute the multivariate normal PDF (dmvnorm equivalent)
+#                 try:
+#                     Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+#                 except np.linalg.LinAlgError as e:
+#                     print(f"Numerical issue in multivariate normal pdf")
+#                     Ki = 0
+#
+#                 # If the sum of Ki is zero, regularize the covariance matrix by adding a small value to the diagonal
+#                 if np.sum(Ki) == 0:
+#                     D += np.eye(D.shape[0]) * epsilon
+#                     try:
+#                         Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
+#                     except np.linalg.LinAlgError as e:
+#                         print(f"Numerical issue in multivariate normal pdf")
+#                         Ki = 0
+#
+#                 # Store the result in the K matrix
+#                 K[i, j] = float(Ki)
+#                 t2 = time.time()
+#                 K_time += t2 - t1
+#         t1 = time.time()
+#         # if True:
+#         p = sinkhorn_multidimensional(a=a, b=b, K=K)
+#         # else:
+#         #     p = ot.sinkhorn(a, b, M=M/2, reg=dt)
+#         t2 = time.time()
+#         sinkhorn_time += t2-t1
+#         ps.append(p)
+#
+#     t1 = time.time()
+#     N = max(5 * num_trajectories, 1000)
+#     X_OT = np.zeros(shape=(N, num_time_steps, d))
+#     OT_index_propagation = np.zeros(shape=(N, num_time_steps - 1))
+#     if frac_other_time_samples == 0:
+#         indices = np.arange(num_trajectories)
+#     else:
+#         indices = np.arange(num_trajectories * num_time_steps)
+#     for _ in range(N):
+#         for t in range(num_time_steps - 1):
+#             pt_normalized = normalize_rows(ps[t])
+#             if t == 0:
+#                 k = np.random.randint(num_trajectories)
+#                 X_OT[_, 0, :] = marginal_samples[0][k]
+#             else:
+#                 # retrieve where _th observation at time 0 was projected to at time t
+#                 k = int(OT_index_propagation[_, t - 1])
+#             j = np.random.choice(indices, p=pt_normalized[k])
+#             OT_index_propagation[_, t] = int(j)
+#             if frac_other_time_samples == 0:
+#                 X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
+#             else:
+#                 X_OT[_, t + 1, :] = observations_sorted_by_time[j]
+#     t2 = time.time()
+#     ot_traj_time = t2-t1
+#     print('Time setting up K:', K_time)
+#     print('Time doing Sinkhorn:', sinkhorn_time)
+#     print('Time creating trajectories', ot_traj_time)
+#     return X_OT
+#
 
 def estimate_A_exp_ot_with_traj(X, dt, T=1, frac_other_time_samples=0,
                                 sinkhorn_log_thresh=0.001, cur_est_A=None, cur_est_D=None, estimate_G=True, linearization = True):
