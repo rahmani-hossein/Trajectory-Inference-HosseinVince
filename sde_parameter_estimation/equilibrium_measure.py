@@ -61,7 +61,7 @@ for drift_scale in drift_scales:
             print(f'estimated A (bibbona) = {est_A_bib[0][0]}')
             est_A_exp = estimate_A_exp(X_measured, dt)
             print(f'estimated A (exp) = {est_A_exp[0][0]}')
-            est_D = estimate_GGT_(X_measured, T)
+            est_D = estimate_GGT_unvectorized(X_measured, T)
             print(f'estimated D split = {est_D[0][0]}')
             est_D = estimate_GGT(X_measured, T)
             print(f'estimated D = {est_D[0][0]}')

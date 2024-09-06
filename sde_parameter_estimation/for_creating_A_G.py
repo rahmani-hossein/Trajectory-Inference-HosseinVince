@@ -12,8 +12,10 @@ from scipy.stats import norm
 A_trues = np.array([[0,1], [-1, 0]])
 G_trues = np.eye(2)
 
+
+
 # Save the data with the specified filename
-save_drifts_diffusions('2D_ex_rotation', A_trues, G_trues)
+# save_drifts_diffusions('2D_ex_rotation', A_trues, G_trues)
 #
 #
 # hist_time_jump =5

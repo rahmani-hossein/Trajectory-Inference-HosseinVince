@@ -18,15 +18,15 @@ A_list = []
 G_list = []
 d = 2
 epsilon = 0
-matrix = np.array([[0, 1], [-1, 0]])#np.zeros((d,d)) #np.array([[-1,0], [0,-1]])
-A = np.array([[1,2], [1,0]]) #matrix #+ np.array([[0, 1], [-1, 0]]) #+ np.array([[0, 7], [-1, 0]])  #np.ones((d,d))*epsilon  #-2* np.eye(d)
+matrix = np.array([[0, 1], [-1, 0]]) #np.zeros((d,d)) #np.array([[-1,0], [0,-1]])
+A = matrix #matrix #+ np.array([[0, 1], [-1, 0]]) #+ np.array([[0, 7], [-1, 0]])  #np.ones((d,d))*epsilon  #-2* np.eye(d)
 A_list.append(A)
-G = np.zeros((d,d))#np.eye(d)#np.array([[1,0,0],[1,0,0], [1,0,0]])#np.array([[1,2], [-1,-2]]) #np.zeros((d,d))#np.array([[0.11,0.22], [-0.11,-0.22]])#np.array([[1,-0.5], [0.5,5]])
+G = np.eye(d) #np.zeros((d,d))#np.eye(d)#np.array([[1,0,0],[1,0,0], [1,0,0]])#np.array([[1,2], [-1,-2]]) #np.zeros((d,d))#np.array([[0.11,0.22], [-0.11,-0.22]])#np.array([[1,-0.5], [0.5,5]])
 G_list.append(G)
 
 A = np.zeros((d,d))
 A_list.append(A)
-G = np.zeros((d,d))#np.eye(d)#np.array([[1,0,0],[1,0,0], [1,0,0]])#np.array([[1,2], [-1,-2]]) #np.zeros((d,d))#np.array([[0.11,0.22], [-0.11,-0.22]])#np.array([[1,-0.5], [0.5,5]])
+G = np.eye(d)#np.zeros((d,d))#np.eye(d)#np.array([[1,0,0],[1,0,0], [1,0,0]])#np.array([[1,2], [-1,-2]]) #np.zeros((d,d))#np.array([[0.11,0.22], [-0.11,-0.22]])#np.array([[1,-0.5], [0.5,5]])
 G_list.append(G)
 # cons = np.array([[0, 1], [-1, 0]]) #np.array([[0, 1], [-1, 0]]) #np.array([[0, 1], [-1, 0]])#np.array([[0, 7], [-1, 0]])# -2* np.eye(d)
 # A = matrix + cons #np.array([[1/3, 4/3], [2/3, -1/3]])
@@ -44,7 +44,7 @@ dt_EM = dt#0.001
 alpha = 0 #0.6
 scale = 10
 max_its = 100
-stationary_start = False
+stationary_start = True
 hist_time_jump = 5
 plot_trajectory_graph = False
 estimate_parameters = False

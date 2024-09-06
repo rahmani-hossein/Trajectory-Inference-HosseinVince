@@ -6,6 +6,7 @@ import math
 import utils.simulation
 from utils.load_save import *
 
+
 def create_measurement_data(args, base_params, ablation_param):
     D = base_params['D']
     if 'T' in base_params:
@@ -27,7 +28,9 @@ def create_measurement_data(args, base_params, ablation_param):
     if args.simulation_mode == 'killed':
         print('generating trajectories from killed cells')
         with ProcessPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(generate_sde_data_cell_measurement, i, max_num_trajectories, max_T, min_dt, base_params, args.saved_drifts_diffusions_file, i): i for i in range(base_params['n_sdes'])}
+            futures = {
+                executor.submit(generate_sde_data_cell_measurement, i, max_num_trajectories, max_T, min_dt, base_params,
+                                args.saved_drifts_diffusions_file, i): i for i in range(base_params['n_sdes'])}
             results = []
             for future in tqdm(as_completed(futures), total=base_params['n_sdes']):
                 results.append(future.result())
@@ -37,25 +40,46 @@ def create_measurement_data(args, base_params, ablation_param):
         print('generating unkilled trajectories')
         maximal_X_measured_list, A_trues, G_trues = [], [], []
         for i in tqdm(range(base_params['n_sdes'])):
-            A_trues.append(utils.simulation.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization'], saved_drifts_diffusions_file=args.saved_drifts_diffusions_file, save_index=i))
-            G_trues.append(utils.simulation.initialize_diffusion(base_params['d'], initialization_type=base_params['diffusion_initialization'],
-                                                                 diffusion_scale=base_params['D'], saved_drifts_diffusions_file=args.saved_drifts_diffusions_file, save_index=i))
-            maximal_X_measured_list.append(true_multi_ou_process(max_num_trajectories,  base_params['d'], max_T, base_params['dt_EM'], min_dt, A_trues[-1], G_trues[-1], X0 = base_params['X0']))
+            A_trues.append(utils.simulation.initialize_drift(base_params['d'],
+                                                             initialization_type=base_params['drift_initialization'],
+                                                             saved_drifts_diffusions_file=args.saved_drifts_diffusions_file,
+                                                             save_index=i))
+            G_trues.append(utils.simulation.initialize_diffusion(base_params['d'], initialization_type=base_params[
+                'diffusion_initialization'],
+                                                                 diffusion_scale=base_params['D'],
+                                                                 saved_drifts_diffusions_file=args.saved_drifts_diffusions_file,
+                                                                 save_index=i))
+            maximal_X_measured_list.append(
+                true_multi_ou_process(max_num_trajectories, base_params['d'], max_T, base_params['dt_EM'], min_dt,
+                                      A_trues[-1], G_trues[-1], X0=base_params['X0']))
             # maximal_X_measured_list.append(multiple_ou_trajectories(max_num_trajectories, base_params['d'], max_T, min_dt, A_trues[-1], G_trues[-1], X0 = base_params['X0']))
             filename = f'unkilled_seed-{args.master_seed}_X0-{args.fixed_X0}_d-{args.d}_n_sdes-{args.n_sdes}_dt-{min_dt}_N-{max_num_trajectories}_T-{max_T}_D-{D}'
 
-    save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list, max_num_trajectories, max_T, min_dt)
+    save_measurement_data(filename, base_params, ablation_param, A_trues, G_trues, maximal_X_measured_list,
+                          max_num_trajectories, max_T, min_dt)
     return A_trues, G_trues, maximal_X_measured_list, filename, max_num_trajectories, max_T, min_dt
 
-def generate_sde_data_cell_measurement(i, max_num_trajectories, max_T, min_dt, base_params, saved_drifts_diffusions_file = None, save_idx = None):
+
+def generate_sde_data_cell_measurement(i, max_num_trajectories, max_T, min_dt, base_params,
+                                       saved_drifts_diffusions_file=None, save_idx=None):
     np.random.seed(base_params['master_seed'] + i)
-    A = utils.simulation.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization'], saved_drifts_diffusions_file=saved_drifts_diffusions_file, save_index = save_idx)
-    G = utils.simulation.initialize_diffusion(base_params['d'], initialization_type=base_params['diffusion_initialization'], diffusion_scale=base_params['D'], saved_drifts_diffusions_file=saved_drifts_diffusions_file, save_index = save_idx)
-    maximal_X_measured = generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, base_params['d'], base_params['dt_EM'], A, G, base_params['X0'])
+    A = utils.simulation.initialize_drift(base_params['d'], initialization_type=base_params['drift_initialization'],
+                                          saved_drifts_diffusions_file=saved_drifts_diffusions_file,
+                                          save_index=save_idx)
+    G = utils.simulation.initialize_diffusion(base_params['d'],
+                                              initialization_type=base_params['diffusion_initialization'],
+                                              diffusion_scale=base_params['D'],
+                                              saved_drifts_diffusions_file=saved_drifts_diffusions_file,
+                                              save_index=save_idx)
+    maximal_X_measured = generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt,
+                                                                         base_params['d'], base_params['dt_EM'], A, G,
+                                                                         base_params['X0'])
     print(f'A for SDE {i}:', A)
     return A, G, maximal_X_measured
 
-def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None, stationary = False):
+
+def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T, min_dt, d, dt_EM, A, G, X0=None,
+                                                    stationary=False):
     n_measured_times = int(max_T / min_dt)
     X_measured = np.zeros((max_num_trajectories, n_measured_times, d))
     if stationary:
@@ -89,12 +113,14 @@ def generate_maximal_dataset_cell_measurement_death(max_num_trajectories, max_T,
                     else:
                         # cell trajectory terminating at i*dt
                         if stationary:
-                            X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, np.array([np.random.randn() * math.sqrt(stationary_variance) for i in range(d)]))[-1]
+                            X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, np.array(
+                                [np.random.randn() * math.sqrt(stationary_variance) for i in range(d)]))[-1]
                         else:
                             X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
 
-def ou_process(T, dt, A, G, X0, seed = None):
+
+def ou_process(T, dt, A, G, X0, seed=None):
     """
     Simulate a single trajectory of a multidimensional Ornstein-Uhlenbeck process:
     dX_t = AX_tdt + GdW_t
@@ -122,6 +148,7 @@ def ou_process(T, dt, A, G, X0, seed = None):
         X[t] = X[t - 1] + dt * (A.dot(X[t - 1])) + G.dot(dW[t])
 
     return X
+
 
 def true_multi_ou_process(num_trajectories, d, T, dt_EM, dt, A, G, X0=None, X0_prob_dist=None, stationary=False,
                           beps=True, exact=False):
@@ -183,6 +210,8 @@ def true_multi_ou_process(num_trajectories, d, T, dt_EM, dt, A, G, X0=None, X0_p
             X_measured[n, i, :] = X_true[i * rate, :]
 
     return X_measured
+
+
 
 
 # def true_multi_ou_process(num_trajectories, d, T, dt_EM, dt, A, G, X0=None, stationary = False, beps = True, exact = False):
@@ -361,10 +390,11 @@ def multiplicative_noise_process(T, dt, A, G, X0):
     for t in range(1, num_steps):
         GXt_dW = np.zeros(num_dimensions)
         for i in range(num_dimensions):
-            GXt_dW += G[i].dot(X[t-1]) * dW[t, i]
-        X[t] = X[t-1] + dt * (A.dot(X[t-1])) + GXt_dW
+            GXt_dW += G[i].dot(X[t - 1]) * dW[t, i]
+        X[t] = X[t - 1] + dt * (A.dot(X[t - 1])) + GXt_dW
 
     return X
+
 
 def multiple_multiplicative_noise_trajectories(num_trajectories, T, dt, A, G, X0):
     """
@@ -386,7 +416,6 @@ def multiple_multiplicative_noise_trajectories(num_trajectories, T, dt, A, G, X0
     trajectories = np.zeros((num_trajectories, num_steps, num_dimensions))
 
     for i in range(num_trajectories):
-
         trajectories[i] = multiplicative_noise_process(T, dt, A, G, X0)
 
     return trajectories

@@ -264,8 +264,6 @@ def create_OT_traj_md(X, D, dt, cur_est_A = None, frac_other_time_samples = 0, l
     #     print(X_OT[:, :3, :])
     return X_OT
 
-
-
 def create_OT_traj(X, entropy_reg, dt, sinkhorn_log_thresh=0.01, cur_est_A = None, metric = 'euclidean', frac_other_time_samples = 0, linearization = False):
     marginal_samples = extract_marginal_samples(X)
     np.random.seed()
@@ -367,7 +365,6 @@ def estimate_A_exp_ot_with_traj(X, dt, T=1, frac_other_time_samples=0,
         return A_OT, G_OT
     else:
         return A_OT
-
 
 
 
@@ -592,7 +589,7 @@ def estimate_GGT(trajectories, T, est_A=None):
     return GGT
 
 
-def estimate_GGT_(X, T, est_A = None):
+def estimate_GGT_unvectorized(X, T, est_A = None):
     """
     Estimate the matrix GG^T from multiple trajectories of a multidimensional
     Ornstein-Uhlenbeck process.
