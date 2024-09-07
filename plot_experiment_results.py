@@ -12,35 +12,43 @@ def aggregate_results(results_data):
     est_A_list = [np.zeros((d,d))]
     initial_GGT_values = []
     for key in sorted(results_data.keys()):
+        print(f'initial X0: {results_data[key]['X0 points']}')
         initial_GGT_values.append(results_data[key]['initial D'])
+        print(results_data[key]['initial D'])
     est_GGT_list = [np.mean(initial_GGT_values)]
+    est_GGT_list = []
+    est_A_list = []
 
 
     for iteration in range(num_iterations):
         A_values = []
         GGT_values = []
 
-        # Loop through the experiment iterates
+        # Loop through the experiment replicates
         for key in sorted(results_data.keys()):
-
+            A = results_data[key]['est A values'][iteration]
+            print(f'estimated A at iteration {iteration}: {A}')
             # Collect the values for the current iteration across all experiments
-            A_values.append(results_data[key]['est A values'][iteration])
-            GGT_values.append(results_data[key]['est D values'][iteration])
+            A_values.append(A)
+            D = results_data[key]['est D values'][iteration]
+            print(f'estimated D at iteration {iteration}: {D}')
+            GGT_values.append(D)
 
 
             # print(results_data[4]['initial D'])
             # print(results_data[4]['X0 points'])
 
         # Compute the average for the current iteration
-        est_A_list.append(np.mean(A_values))
-        est_GGT_list.append(np.mean(GGT_values))
+        est_A_list.append(np.mean(A_values, axis = 0))
+        est_GGT_list.append(np.mean(GGT_values, axis = 0))
 
     return est_A_list, est_GGT_list
 
 
 def compute_mape(estimated, ground_truth):
     """Compute Mean Absolute Percentage Error (MAE)"""
-    return np.mean(np.abs((estimated - ground_truth)))
+    mae = np.mean(np.abs((estimated - ground_truth)))
+    return mae
 
 # def compute_mape(estimated, ground_truth):
 #     """Compute the 90th Percentile of the Mean Absolute Percentage Error (MAPE)"""
@@ -53,7 +61,9 @@ def plot_mape_vs_iterations(results_data_version1, ground_truth_A1, ground_truth
     est_A_list_v1, est_GGT_list_v1 = aggregate_results(results_data_version1)
 
 
+
     # Compute MAPE for each iteration for both versions
+    print('A estimates:', est_A_list_v1)
     mape_A_v1 = [compute_mape(est_A, ground_truth_A1) for est_A in est_A_list_v1]
     mape_GGT_v1 = [compute_mape(est_GGT, ground_truth_GGT1) for est_GGT in est_GGT_list_v1]
     iterations = np.arange(1, len(mape_A_v1) + 1)
@@ -109,7 +119,7 @@ def retrieve_true_A_D(exp_number, version):
     return A, np.matmul(G, G.T)
 
 
-def plot_exp_results(exp_number, version, num_reps=8):
+def plot_exp_results(exp_number, version, num_reps=10):
     results_data_global = {}
     ground_truth_A1, ground_truth_GGT1 = retrieve_true_A_D(exp_number, version)
     for i in range(1, num_reps+1):
@@ -119,5 +129,9 @@ def plot_exp_results(exp_number, version, num_reps=8):
         results_data_global[i]=results_data
     plot_mape_vs_iterations(results_data_global, ground_truth_A1, ground_truth_GGT1)
 
-plot_exp_results(exp_number = 3, version = 1)
+# plot_exp_results(exp_number = 1, version = 1)
+plot_exp_results(exp_number = 3, version = 2)
+# plot_exp_results(exp_number = 3, version = 1)
+# plot_exp_results(exp_number = 3, version = 2)
+# plot_exp_results(exp_number = 3, version = 2)
 

@@ -10,7 +10,7 @@ import pickle
 from scipy.stats import multivariate_normal
 
 
-def generate_independent_points(d, num_points, min_magnitude=0, max_magnitude=10, min_angle_degrees=30):
+def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10, min_angle_degrees=30):
     points = []
 
     # Generate first random point
@@ -85,6 +85,7 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
             X0_ = np.random.multivariate_normal(np.zeros(d), cov_matrix)
 
         if matrix_exponential:
+            print('This should not be happening')
             X_true = ou_process_matrix_exponential(T, dt_EM, A, G, X0_)
         else:
             X_true = ou_process(T, dt_EM, A, G, X0_)
@@ -253,6 +254,22 @@ def estimate_A_exp(X, dt, GGT=None, pinv=False):
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
+def estimate_A_bibbona(X, dt, pinv = False):
+    num_trajectories, num_steps, d = X.shape
+    numerator = np.zeros((d,d))
+    denominator = np.zeros((d, d))
+    # compute mean
+    X_bar = np.mean(X)
+    for t in range(num_steps - 1):
+        for n in range(num_trajectories):
+            numerator += np.outer((X[n, t+1, :]-X_bar), (X[n, t, :]-X_bar))
+            denominator += np.outer(X[n, t, :]-X_bar, X[n, t, :]-X_bar)
+    if pinv:
+        partial = np.matmul(numerator, np.linalg.pinv(denominator))
+    else:
+        partial = left_Var_Equation(denominator, numerator)
+    return 1/dt * np.log(partial)
+
 def estimate_GGT(trajectories, T, est_A=None):
     """
     Estimate the matrix GG^T from multiple trajectories of a multidimensional
@@ -387,7 +404,7 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
 
         A_dt = cur_est_A * dt if linearization else expm(cur_est_A * dt)
         if linearization:
-            A_X_t = np.matmul(cur_est_A * dt, X_t.T)
+            A_X_t = np.matmul(A_dt, X_t.T)
 
         # Regularize D once before the loop
         D_reg = D + np.eye(D.shape[0]) * epsilon
@@ -456,7 +473,11 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
 
 def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, linearization = True, report_time_splits = False):
     X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, linearization=linearization, report_time_splits=report_time_splits)
-    A_OT = estimate_A_exp(X_OT, dt)
+    if linearization:
+        A_OT = estimate_A_exp(X_OT, dt)
+    else:
+        print('bibbona: this should not be happening')
+        A_OT = estimate_A_bibbona(X_OT, dt)
     G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
     return A_OT, G_OT, X_OT
 

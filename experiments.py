@@ -2,14 +2,14 @@ from experiments_helpers import *
 
 
 def default_measurement_settings():
-    dt = 0.05
-    dt_EM = 0.001
+    dt = 0.02
+    dt_EM = dt
     T = 1
-    N = 500
+    N = 250
     max_its = 30
     linearization = True
     killed = False
-    report_time_splits = False
+    report_time_splits = True
     return dt, dt_EM, T, N, max_its, linearization, killed, report_time_splits
 
 
@@ -98,7 +98,7 @@ def run_experiment_1(points, version=1):
         G = np.eye(d)
     else:
         A = np.array([[-10]])
-        G = 10 * np.eye(d)
+        G = math.sqrt(10) * np.eye(d)
     return run_generic_experiment(points, A, G, d)
 
 def run_experiment_2(points, version=1):
@@ -120,9 +120,9 @@ def run_experiment_3(points, version=1):
     return run_generic_experiment(points, A, G, d)
 
 
-run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
-run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=2)
-run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=1)
-run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=2)
+run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
+run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
 run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
 run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
+run_generic_experiment_replicates(exp_number=2, num_replicates=9, version=1)
+run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=2)
