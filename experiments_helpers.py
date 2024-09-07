@@ -77,22 +77,12 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
     rate = int(dt / dt_EM)
 
     for n in range(num_trajectories):
-        if stationary:
-            drift_scale = np.linalg.norm(A)
-            D = np.linalg.norm(np.matmul(G, np.transpose(G)))
-            if drift_scale > 0:
-                stationary_variance = D / (2 * d * drift_scale)
-            else:
-                stationary_variance = D / (2 * d * 1e-10)
-                cov = np.identity(d) * stationary_variance
-                X0_ = np.random.multivariate_normal(np.zeros(d), cov)
+        if X0_dist is not None:
+            # Sample X0 based on the provided probability distribution
+            X0_ = X0_dist[np.random.choice(len(X0_dist), p=[prob for _, prob in X0_dist])][0]
         else:
-            if X0_dist is not None:
-                # Sample X0 based on the provided probability distribution
-                X0_ = X0_dist[np.random.choice(len(X0_dist), p=[prob for _, prob in X0_dist])][0]
-            else:
-                cov_matrix = np.eye(d)
-                X0_ = np.random.multivariate_normal(np.zeros(d), cov_matrix)
+            cov_matrix = np.eye(d)
+            X0_ = np.random.multivariate_normal(np.zeros(d), cov_matrix)
 
         if matrix_exponential:
             X_true = ou_process_matrix_exponential(T, dt_EM, A, G, X0_)
@@ -101,6 +91,26 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
 
         for i in range(n_measured_times):
             X_measured[n, i, :] = X_true[i * rate, :]
+    return X_measured
+
+def killed_linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, matrix_exponential=False, stationary=False):
+    n_measured_times = int(T / dt)
+    X_measured = np.zeros((num_trajectories, n_measured_times, d))
+    for i in range(n_measured_times):
+        for n in range(num_trajectories):
+            if X0_dist is not None:
+                # Sample X0 based on the provided probability distribution
+                X0_ = X0_dist[np.random.choice(len(X0_dist), p=[prob for _, prob in X0_dist])][0]
+            else:
+                cov_matrix = np.eye(d)
+                X0_ = np.random.multivariate_normal(np.zeros(d), cov_matrix)
+            if i == 0:
+                X_measured[n, 0, :] = X0_
+            else:
+                # cell trajectory will terminate at i*dt
+                measured_T = i * dt
+                # use consistent X0s across the measured times
+                X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
 
 def ou_process_matrix_exponential(T, dt, A, G, X0, seed=None):
@@ -243,41 +253,6 @@ def estimate_A_exp(X, dt, GGT=None, pinv=False):
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
-# def estimate_GGT(trajectories, T, est_A=None):
-#     """
-#     Estimate the matrix GG^T from multiple trajectories of a multidimensional
-#     Ornstein-Uhlenbeck process.
-#
-#     Parameters:
-#         trajectories (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
-#         T (float): Total time period.
-#         est_A (numpy.ndarray, optional): Estimated drift matrix A. If provided, the increments will be adjusted by the deterministic drift.
-#
-#     Returns:
-#         numpy.ndarray: Estimated GG^T matrix.
-#     """
-#     num_trajectories, num_steps, d = trajectories.shape
-#     dt = T / num_steps
-#
-#     # Initialize the GG^T matrix
-#     GGT = np.zeros((d, d))
-#
-#     if est_A is None:
-#         # Compute increments ΔX for each trajectory (no drift adjustment)
-#         increments = np.diff(trajectories, axis=1)
-#     else:
-#         # Adjust increments by subtracting the deterministic drift: ΔX - A * X_t * dt
-#         increments = np.diff(trajectories, axis=1) - dt*np.matmul(trajectories[:, :-1, :], est_A)
-#
-#     # Sum up the products of increments for each dimension pair across all trajectories and steps
-#     for i in range(d):
-#         for j in range(d):
-#             GGT[i, j] = np.sum(increments[:, :, i] * increments[:, :, j])
-#
-#     # Divide by total time T*num_trajectories to normalize
-#     GGT /= (T - dt) * num_trajectories
-#     return GGT
-
 def estimate_GGT(trajectories, T, est_A=None):
     """
     Estimate the matrix GG^T from multiple trajectories of a multidimensional
@@ -358,27 +333,6 @@ def left_Var_Equation(A1, B1):
     return X
 
 
-def flatten_trajectories_sequentially(trajectories):
-    """
-    Flatten the 3D trajectory array into a 2D array ordered sequentially by time steps.
-
-    Parameters:
-        trajectories (numpy.ndarray): 3D array of trajectories (num_trajectories, num_steps, d).
-
-    Returns:
-        numpy.ndarray: 2D array where rows are samples ordered first by time step, then by trajectory index.
-    """
-    num_trajectories, num_steps, d = trajectories.shape
-    # Initialize the flattened array
-    flattened = np.zeros((num_trajectories * num_steps, d))
-
-    # Fill the flattened array
-    for t in range(num_steps):
-        flattened[t * num_trajectories:(t + 1) * num_trajectories] = trajectories[:, t, :]
-
-    return flattened
-
-
 def normalize_rows(matrix):
     """
     Normalize each row of the matrix to sum to 1.
@@ -391,32 +345,6 @@ def normalize_rows(matrix):
     """
     row_sums = matrix.sum(axis=1, keepdims=True)
     return matrix / row_sums
-
-
-def set_probabilities(observations, num_trajectories, t, frac_other_time_samples):
-    """
-    Set probabilities for distributions a and b with special emphasis on time steps t and t+1.
-
-    Parameters:
-        observations (numpy.ndarray): Flattened array of observations sorted by time.
-        num_trajectories (int): Number of trajectories per time step.
-        t (int): Current time step of interest.
-        frac_other_time_samples (float): Fraction of probability mass for other times.
-
-    Returns:
-        tuple: Two numpy arrays representing the probability distributions a and b.
-    """
-    num_samples = observations.shape[0]
-
-    # Initialize probability distributions
-    a = np.full(num_samples, frac_other_time_samples / (num_samples - num_trajectories))
-    b = np.full(num_samples, frac_other_time_samples / (num_samples - num_trajectories))
-
-    # Adjust probabilities for time step t and t+1
-    a[t * num_trajectories:(t + 1) * num_trajectories] = (1 - frac_other_time_samples) / num_trajectories
-    b[(t + 1) * num_trajectories:(t + 2) * num_trajectories] = (1 - frac_other_time_samples) / num_trajectories
-
-    return a, b
 
 
 def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9):
@@ -433,7 +361,7 @@ def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9):
     return tmp
 
 
-def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linearization=True):
+def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_splits = False):
     marginal_samples = extract_marginal_samples(X)
     np.random.seed()
     num_time_steps = len(marginal_samples)
@@ -441,87 +369,73 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
     if D is None:
         D = np.eye(d)
     num_trajectories = marginal_samples[0].shape[0]
-    # transport plans
-    ps = []
+    ps = [] # transport plans
     sinkhorn_time = 0
     K_time = 0
-    epsilon =  1e-8
+    epsilon = 1e-8
     for t in range(num_time_steps - 1):
-        if frac_other_time_samples == 0:
-            # extract marginal samples
-            X_t = marginal_samples[t]
-            X_t1 = marginal_samples[t + 1]
-            a = np.ones(len(X_t)) / len(X_t)
-            b = np.ones(len(X_t1)) / len(X_t1)
-        else:
-            observations_sorted_by_time = flatten_trajectories_sequentially(X)
-            X_t = observations_sorted_by_time
-            X_t1 = observations_sorted_by_time
-            a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
+        # extract marginal samples
+        X_t = marginal_samples[t]
+        X_t1 = marginal_samples[t + 1]
+        a = np.ones(len(X_t)) / len(X_t)
+        b = np.ones(len(X_t1)) / len(X_t1)
 
-
-        '''
-        seems decent but slow
-        '''
-        # Precompute reusable terms
+        # Precompute reusable terms for matrix A and regularize D
         if cur_est_A is None:
             cur_est_A = np.zeros((d, d))  # Set Brownian motion as reference SDE if no A inputted
+
 
         A_dt = cur_est_A * dt if linearization else expm(cur_est_A * dt)
         if linearization:
             A_X_t = np.matmul(cur_est_A * dt, X_t.T)
 
         # Regularize D once before the loop
-        D += np.eye(D.shape[0]) * epsilon
+        D_reg = D + np.eye(D.shape[0]) * epsilon
+        cov_D_dt = D_reg * dt  # Precompute D * dt once to avoid repeated computation
 
         K = np.zeros((num_trajectories, num_trajectories))
 
+        # Loop over trajectories, vectorize inner calculations
         for i in range(num_trajectories):
-            for j in range(num_trajectories):
-                t1 = time.time()
+            t1 = time.time()
 
-                if linearization:
-                    dX_ij = X_t1[j] - X_t[i] - A_X_t[:, i]
-                else:
-                    dX_ij = X_t1[j] - np.matmul(A_dt, X_t[i])
+            if linearization:
+                # Vectorize the computation for all j's
+                dX_ij = X_t1 - X_t[i] - A_X_t[:, i].T
+            else:
+                # Matrix multiply and vectorize
+                dX_ij = X_t1 - np.matmul(A_dt, X_t[i])
 
-                dX_ij = dX_ij.flatten()
+            # Flatten the differences for all pairs (vectorized)
+            dX_ij_flattened = dX_ij.reshape(num_trajectories, d)
 
-                try:
-                    Ki = multivariate_normal.pdf(dX_ij, mean=np.zeros(d), cov=D * dt)
-                except np.linalg.LinAlgError as e:
-                    print(f"Numerical issue in multivariate normal pdf")
-                    Ki = 0
+            try:
+                # Vectorized PDF computation for all j's
+                K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
+            except np.linalg.LinAlgError:
+                # If numerical issues, regularize again and compute PDFs
+                print(f"Numerical issue in multivariate normal pdf at i={i}")
+                cov_D_dt += np.eye(D.shape[0]) * epsilon  # Further regularize if needed
+                K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
 
-                # Store the result in the K matrix
-                K[i, j] = float(Ki)
-
-                t2 = time.time()
-                K_time += t2 - t1
-
-        '''
-        end of seems decent but slow
-        '''
+            t2 = time.time()
+            K_time += t2 - t1
         t1 = time.time()
-        # if True:
         p = sinkhorn_multidimensional(a=a, b=b, K=K)
-        # else:
-        #     p = ot.sinkhorn(a, b, M=M/2, reg=dt)
         t2 = time.time()
         sinkhorn_time += t2-t1
         ps.append(p)
 
     t1 = time.time()
-    N = max(5 * num_trajectories, 1000)
+    N = 1000
     X_OT = np.zeros(shape=(N, num_time_steps, d))
     OT_index_propagation = np.zeros(shape=(N, num_time_steps - 1))
-    if frac_other_time_samples == 0:
-        indices = np.arange(num_trajectories)
-    else:
-        indices = np.arange(num_trajectories * num_time_steps)
+    # Precompute normalized probabilities once
+    normalized_ps = np.array([normalize_rows(ps[t]) for t in range(num_time_steps - 1)])
+    indices = np.arange(num_trajectories)
     for _ in range(N):
         for t in range(num_time_steps - 1):
-            pt_normalized = normalize_rows(ps[t])
+            pt_normalized = normalized_ps[t]
             if t == 0:
                 k = np.random.randint(num_trajectories)
                 X_OT[_, 0, :] = marginal_samples[0][k]
@@ -530,138 +444,32 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linea
                 k = int(OT_index_propagation[_, t - 1])
             j = np.random.choice(indices, p=pt_normalized[k])
             OT_index_propagation[_, t] = int(j)
-            if frac_other_time_samples == 0:
-                X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
-            else:
-                X_OT[_, t + 1, :] = observations_sorted_by_time[j]
+            X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
     t2 = time.time()
     ot_traj_time = t2-t1
-    print('Time setting up K:', K_time)
-    print('Time doing Sinkhorn:', sinkhorn_time)
-    print('Time creating trajectories', ot_traj_time)
+    if report_time_splits:
+        print('Time setting up K:', K_time)
+        print('Time doing Sinkhorn:', sinkhorn_time)
+        print('Time creating trajectories', ot_traj_time)
     return X_OT
-# def create_OT_traj_md(X, D, dt, cur_est_A=None, frac_other_time_samples=0, linearization=True):
-#     marginal_samples = extract_marginal_samples(X)
-#     np.random.seed()
-#     num_time_steps = len(marginal_samples)
-#     d = marginal_samples[0].shape[1]
-#     if D is None:
-#         D = np.eye(d)
-#     num_trajectories = marginal_samples[0].shape[0]
-#     # transport plans
-#     ps = []
-#     sinkhorn_time = 0
-#     K_time = 0
-#     epsilon =  1e-8
-#     for t in range(num_time_steps - 1):
-#         if frac_other_time_samples == 0:
-#             # extract marginal samples
-#             X_t = marginal_samples[t]
-#             X_t1 = marginal_samples[t + 1]
-#             a = np.ones(len(X_t)) / len(X_t)
-#             b = np.ones(len(X_t1)) / len(X_t1)
-#             # if cur_est_A is not None:
-#             #     M = ot.dist(X_t + np.matmul(X_t, cur_est_A) * dt, X_t1, metric='sqeuclidean')
-#             # else:
-#             #     M = ot.dist(X_t, X_t1, metric = 'sqeuclidean')
-#         else:
-#             observations_sorted_by_time = flatten_trajectories_sequentially(X)
-#             X_t = observations_sorted_by_time
-#             X_t1 = observations_sorted_by_time
-#             a, b = set_probabilities(observations_sorted_by_time, num_trajectories, t, frac_other_time_samples)
-#
-#         K = np.zeros((num_trajectories, num_trajectories))
-#
-#         # if np.linalg.det(D) != 0:
-#         #     for i in range(d):
-#         #         D[i,i] += 1e-8
-#         # inv_D_dt = np.linalg.lstsq(D.T * dt, np.eye(D.shape[0]), rcond=None)[0]#np.linalg.pinv(D * dt)
-#         for i in range(num_trajectories):
-#             for j in range(num_trajectories):
-#                 t1 = time.time()
-#                 if cur_est_A is None:
-#                     cur_est_A = np.zeros((d, d))  # set Brownian motion as reference SDE if no A inputted
-#                 if linearization:
-#                     dX = X_t1[j] - X_t[i] - np.matmul(cur_est_A * dt, X_t[i])
-#                 else:
-#                     dX = X_t1[j] - np.matmul(expm(cur_est_A * dt), X_t[i])
-#                 dX = dX.flatten()#dX.reshape(-1, 1)  # Reshape to a column vector
-#                 # if np.linalg.det(D) != 0:
-#                 #     K[i, j] = (2*math.pi)**(-d/2)*np.linalg.det(D)**(-1/2)*np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
-#                 # else:
-#                 #     K[i, j] = np.exp(-0.5 * np.dot(dX.T, inv_D_dt @ dX).item())
-#                 # Compute the multivariate normal PDF (dmvnorm equivalent)
-#                 try:
-#                     Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
-#                 except np.linalg.LinAlgError as e:
-#                     print(f"Numerical issue in multivariate normal pdf")
-#                     Ki = 0
-#
-#                 # If the sum of Ki is zero, regularize the covariance matrix by adding a small value to the diagonal
-#                 if np.sum(Ki) == 0:
-#                     D += np.eye(D.shape[0]) * epsilon
-#                     try:
-#                         Ki = multivariate_normal.pdf(dX, mean=np.zeros(d), cov=D * dt)
-#                     except np.linalg.LinAlgError as e:
-#                         print(f"Numerical issue in multivariate normal pdf")
-#                         Ki = 0
-#
-#                 # Store the result in the K matrix
-#                 K[i, j] = float(Ki)
-#                 t2 = time.time()
-#                 K_time += t2 - t1
-#         t1 = time.time()
-#         # if True:
-#         p = sinkhorn_multidimensional(a=a, b=b, K=K)
-#         # else:
-#         #     p = ot.sinkhorn(a, b, M=M/2, reg=dt)
-#         t2 = time.time()
-#         sinkhorn_time += t2-t1
-#         ps.append(p)
-#
-#     t1 = time.time()
-#     N = max(5 * num_trajectories, 1000)
-#     X_OT = np.zeros(shape=(N, num_time_steps, d))
-#     OT_index_propagation = np.zeros(shape=(N, num_time_steps - 1))
-#     if frac_other_time_samples == 0:
-#         indices = np.arange(num_trajectories)
-#     else:
-#         indices = np.arange(num_trajectories * num_time_steps)
-#     for _ in range(N):
-#         for t in range(num_time_steps - 1):
-#             pt_normalized = normalize_rows(ps[t])
-#             if t == 0:
-#                 k = np.random.randint(num_trajectories)
-#                 X_OT[_, 0, :] = marginal_samples[0][k]
-#             else:
-#                 # retrieve where _th observation at time 0 was projected to at time t
-#                 k = int(OT_index_propagation[_, t - 1])
-#             j = np.random.choice(indices, p=pt_normalized[k])
-#             OT_index_propagation[_, t] = int(j)
-#             if frac_other_time_samples == 0:
-#                 X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
-#             else:
-#                 X_OT[_, t + 1, :] = observations_sorted_by_time[j]
-#     t2 = time.time()
-#     ot_traj_time = t2-t1
-#     print('Time setting up K:', K_time)
-#     print('Time doing Sinkhorn:', sinkhorn_time)
-#     print('Time creating trajectories', ot_traj_time)
-#     return X_OT
-#
 
-def estimate_A_exp_ot_with_traj(X, dt, T=1, frac_other_time_samples=0,
-                                sinkhorn_log_thresh=0.001, cur_est_A=None, cur_est_D=None, estimate_G=True, linearization = True):
-    X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, frac_other_time_samples, linearization=linearization)
-    t1 = time.time()
+
+def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, linearization = True, report_time_splits = False):
+    X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, linearization=linearization, report_time_splits=report_time_splits)
     A_OT = estimate_A_exp(X_OT, dt)
-    t2 = time.time()
-    print('Time estimating A:', t2-t1)
-    if estimate_G:
-        t1 = time.time()
-        G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
-        t2 = time.time()
-        print('Time estimating G:', t2 - t1)
-        return A_OT, G_OT, X_OT
-    else:
-        return A_OT, X_OT
+    G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
+    return A_OT, G_OT, X_OT
+
+
+def save_with_unique_filename(filepath):
+    """Ensures that the file is saved with a unique name if the file already exists."""
+    base_filepath, extension = os.path.splitext(filepath)
+    counter = 1
+    unique_filepath = filepath
+
+    # Keep checking and incrementing the counter until a unique filename is found
+    while os.path.exists(unique_filepath):
+        unique_filepath = f"{base_filepath}({counter}){extension}"
+        counter += 1
+
+    return unique_filepath
