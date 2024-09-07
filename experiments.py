@@ -28,8 +28,9 @@ def run_generic_experiment(points, A, G, d):
     print('estimating parameters')
     its = 1
     mean = np.trace(np.matmul(G, G.T)) / d  # get average magnitude of main diagonal entry of true diffusion
-    random_scale = np.random.uniform(low=mean * 0.1, high=mean * 10)
-    initial_D = random_scale * np.eye(d)
+    order_magnitude = np.random.uniform(low=-1, high=1)
+    random_scale = 10**(order_magnitude)
+    initial_D = random_scale * mean * np.eye(d)
     print('initial guess for D:', initial_D)
     est_A_list, est_GGT_list = [], []
     est_A, est_GGT, X_OT = estimate_A_exp_ot_with_traj(X_measured, dt, T, cur_est_D=initial_D,
@@ -122,7 +123,10 @@ def run_experiment_3(points, version=1):
 
 run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
 run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
-run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
-run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
-run_generic_experiment_replicates(exp_number=2, num_replicates=9, version=1)
+run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
+run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=2)
+# for Hossein
+run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=1)
+# for Hossein
 run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=2)
+
