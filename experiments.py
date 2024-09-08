@@ -55,6 +55,8 @@ def run_generic_experiment(points, A, G, d):
         if report_time_splits:
             print(f'Iteration time:', t2 - t1)
     results_data = {}
+    results_data['true_A'] = A
+    results_data['true_D'] =np.matmul(G,G.T)
     results_data['X0 points'] = points
     results_data['initial D'] = initial_D
     results_data['est D values'] = est_GGT_list
@@ -66,6 +68,8 @@ def run_generic_experiment_replicates(exp_number, num_replicates, version):
         d = 1
     elif exp_number == 2 or exp_number == 3:
         d = 2
+    elif exp_number == 'random':
+        d = np.random.randint(low=2, high=11)
     for i in range(1, num_replicates + 1):
         print(f'\nRunning iterate {i} of experiment {exp_number} version {version}')
         points = generate_independent_points(d, d)  # Generate new points for each iteration
@@ -77,12 +81,17 @@ def run_generic_experiment_replicates(exp_number, num_replicates, version):
             results_data = run_experiment_2(points, version=version)
         elif exp_number == 3:
             results_data = run_experiment_3(points, version=version)
+        elif exp_number == 'random':
+            results_data = run_experiment_random(points, d)
         # Ensure the directory exists
-        results_dir = f'Results_experiment_{exp_number}'
+        results_dir = f'Results_experiment_{exp_number}_{d}'
         os.makedirs(results_dir, exist_ok=True)
 
         # Create the filename and filepath
-        filename = f'version-{version}_replicate-{i}.pkl'
+        if exp_number is not 'random':
+            filename = f'version-{version}_replicate-{i}.pkl'
+        else:
+            filename = f'replicate-{i}.pkl'
         filepath = os.path.join(results_dir, filename)
 
         # Get a unique filepath to avoid overwriting
@@ -120,7 +129,13 @@ def run_experiment_3(points, version=1):
     G = np.array([[1, 2], [-1, -2]])
     return run_generic_experiment(points, A, G, d)
 
+def run_experiment_random(points, d):
 
+    A = np.random.uniform(low=-10, high=10, size=(d, d))
+    G = np.random.uniform(low=-5, high=5, size=(d, d))
+    return run_generic_experiment(points, A, G, d)
+
+run_generic_experiment_replicates(exp_number='random', num_replicates=10)
 # run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
 # run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
 # run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)

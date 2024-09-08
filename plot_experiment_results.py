@@ -29,8 +29,10 @@ def aggregate_results(results_data, ground_truth_A, ground_truth_D):
         # Loop through the experiment replicates
         for key in sorted(results_data.keys()):
             A = results_data[key]['est A values'][iteration]
+            print(f'estimated A at iteration {iteration}: {A}')
             A_maes.append(compute_mae(A, ground_truth_A))
             D = results_data[key]['est D values'][iteration]
+            print(f'estimated D at iteration {iteration}: {D}')
             D_maes.append(compute_mae(D, ground_truth_D))
 
             # print(results_data[4]['initial D'])
