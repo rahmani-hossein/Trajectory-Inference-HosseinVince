@@ -54,6 +54,21 @@ def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10
 
     return points
 
+def generate_random_matrix_with_eigenvalue_constraint(d, eigenvalue_threshold=1):
+    while True:
+        # Step 1: Generate a random matrix (e.g., from a normal distribution)
+        M = np.random.uniform(low=-5, high=5, size=(d, d))
+
+        # Step 2: Compute the eigenvalues of the matrix
+        eigenvalues = np.linalg.eigvals(M)
+
+        # Step 3: Check if the largest eigenvalue is less than the threshold
+        max_eigenvalue = np.max(eigenvalues)
+        if max_eigenvalue < eigenvalue_threshold:
+            break  # Exit the loop if the condition is satisfied
+
+    # Step 4: Return the matrix that satisfies the constraint
+    return M
 
 def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, stationary=False, matrix_exponential=False):
     '''
@@ -85,7 +100,7 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
             X0_ = np.random.multivariate_normal(np.zeros(d), cov_matrix)
 
         if matrix_exponential:
-            print('This should not be happening')
+            # print('This should not be happening')
             X_true = ou_process_matrix_exponential(T, dt_EM, A, G, X0_)
         else:
             X_true = ou_process(T, dt_EM, A, G, X0_)
@@ -364,7 +379,7 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-3):
+def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-2):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
@@ -477,7 +492,7 @@ def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, line
     if linearization:
         A_OT = estimate_A_exp(X_OT, dt)
     else:
-        print('bibbona: this should not be happening')
+        # print('bibbona: this should not be happening')
         A_OT = estimate_A_bibbona(X_OT, dt)
     G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
     return A_OT, G_OT, X_OT
@@ -495,3 +510,8 @@ def save_with_unique_filename(filepath):
         counter += 1
 
     return unique_filepath
+
+def compute_mae(estimated, ground_truth):
+    """Compute Mean Absolute Percentage Error (MAE)"""
+    mae = np.mean(np.abs((estimated - ground_truth)))
+    return mae

@@ -13,7 +13,8 @@ def default_measurement_settings():
     return dt, dt_EM, T, N, max_its, linearization, killed, report_time_splits
 
 
-def run_generic_experiment(points, A, G, d):
+def run_generic_experiment(points, A, G, d, verbose = False):
+    D = np.matmul(G, G.T)
     X0_dist = [(point, 1 / len(points)) for point in points]
     print(rf'Generating data for experiment 1: $dX_t = {A} X_t \, dt + {G} \, dW_t$')
     print(rf'X0 is initialised uniformly from the points: {points}')
@@ -38,8 +39,11 @@ def run_generic_experiment(points, A, G, d):
     est_A_list.append(est_A)
     est_GGT_list.append(est_GGT)
     # plot_trajectories(X_OT, T, dt, save_file=False, N_truncate=5)
-    print(f'Estimated A at iteration {its}:', est_A)
-    print(f'Estimated D at iteration {its}:', est_GGT)
+    if verbose:
+        print(f'Estimated A at iteration {its}:', est_A)
+        print(f'Estimated D at iteration {its}:', est_GGT)
+    print(f'MAE to true A at iteration {its}: {compute_mae(est_A, A)}')
+    print(f'MAE to true D at iteration {its}: {compute_mae(est_GGT, D)}')
     while its < max_its:
         t1 = time.time()
         est_A, est_GGT, X_OT = estimate_A_exp_ot_with_traj(X_measured, dt, T, cur_est_A=est_A, cur_est_D=est_GGT,
@@ -50,8 +54,11 @@ def run_generic_experiment(points, A, G, d):
         est_GGT_list.append(est_GGT)
         # plot_trajectories(X_OT, T, dt, save_file=False, N_truncate=5)
         its += 1
-        print(f'Estimated A at iteration {its}:', est_A)
-        print(f'Estimated D at iteration {its}:', est_GGT)
+        if verbose:
+            print(f'Estimated A at iteration {its}:', est_A)
+            print(f'Estimated D at iteration {its}:', est_GGT)
+        print(f'MAE to true A at iteration {its}: {compute_mae(est_A, A)}')
+        print(f'MAE to true D at iteration {its}: {compute_mae(est_GGT, D)}')
         if report_time_splits:
             print(f'Iteration time:', t2 - t1)
     results_data = {}
@@ -63,13 +70,14 @@ def run_generic_experiment(points, A, G, d):
     results_data['est A values'] = est_A_list
     return results_data
 
-def run_generic_experiment_replicates(exp_number, num_replicates, version):
+def run_generic_experiment_replicates(exp_number, num_replicates, version='random'):
     if exp_number == 1:
         d = 1
     elif exp_number == 2 or exp_number == 3:
         d = 2
     elif exp_number == 'random':
-        d = np.random.randint(low=2, high=11)
+        d = np.random.randint(low=3, high=11)
+        print('random SDE will have dimension:', d)
     for i in range(1, num_replicates + 1):
         print(f'\nRunning iterate {i} of experiment {exp_number} version {version}')
         points = generate_independent_points(d, d)  # Generate new points for each iteration
@@ -88,7 +96,7 @@ def run_generic_experiment_replicates(exp_number, num_replicates, version):
         os.makedirs(results_dir, exist_ok=True)
 
         # Create the filename and filepath
-        if exp_number is not 'random':
+        if exp_number != 'random':
             filename = f'version-{version}_replicate-{i}.pkl'
         else:
             filename = f'replicate-{i}.pkl'
@@ -109,7 +117,7 @@ def run_experiment_1(points, version=1):
     else:
         A = np.array([[-10]])
         G = math.sqrt(10) * np.eye(d)
-    return run_generic_experiment(points, A, G, d)
+    return run_generic_experiment(points, A, G, d, verbose = True)
 
 def run_experiment_2(points, version=1):
     d = 2
@@ -118,7 +126,7 @@ def run_experiment_2(points, version=1):
     else:
         A = np.array([[0, 1], [-1, 0]])
     G = np.eye(d)
-    return run_generic_experiment(points, A, G, d)
+    return run_generic_experiment(points, A, G, d, verbose = True)
 
 def run_experiment_3(points, version=1):
     d = 2
@@ -127,12 +135,12 @@ def run_experiment_3(points, version=1):
     else:
         A = np.array([[1 / 3, 4 / 3], [2 / 3, -1 / 3]])
     G = np.array([[1, 2], [-1, -2]])
-    return run_generic_experiment(points, A, G, d)
+    return run_generic_experiment(points, A, G, d, verbose = True)
 
 def run_experiment_random(points, d):
 
-    A = np.random.uniform(low=-10, high=10, size=(d, d))
-    G = np.random.uniform(low=-5, high=5, size=(d, d))
+    A = generate_random_matrix_with_eigenvalue_constraint(d, eigenvalue_threshold=1)
+    G = np.random.uniform(low=-1, high=1, size=(d, d))
     return run_generic_experiment(points, A, G, d)
 
 run_generic_experiment_replicates(exp_number='random', num_replicates=10)
@@ -140,8 +148,8 @@ run_generic_experiment_replicates(exp_number='random', num_replicates=10)
 # run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
 # run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
 # run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=2)
-# for Hossein
-run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=1)
-# for Hossein
-run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=2)
+# # for Hossein
+# run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=1)
+# # for Hossein
+# run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=2)
 
