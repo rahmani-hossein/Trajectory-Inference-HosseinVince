@@ -2,10 +2,10 @@ from experiments_helpers import *
 
 
 def default_measurement_settings():
-    dt = 0.02
-    dt_EM = dt
+    dt = 0.05
+    dt_EM = 0.01
     T = 1
-    N = 250
+    N = 500
     max_its = 30
     linearization = True
     killed = False
@@ -121,10 +121,10 @@ def run_experiment_3(points, version=1):
     return run_generic_experiment(points, A, G, d)
 
 
-run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
-run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
-run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
-run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=2)
+# run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
+# run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
+# run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
+# run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=2)
 # for Hossein
 run_generic_experiment_replicates(exp_number=2, num_replicates=10, version=1)
 # for Hossein
