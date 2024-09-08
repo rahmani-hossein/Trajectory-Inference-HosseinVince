@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import math
 
 
-def aggregate_results(results_data, ground_truth_A, ground_truth_D):
+def aggregate_results(results_data, ground_truth_A_list, ground_truth_D_list):
     """Aggregate estimated A and GGT values from a dictionary where the keys are iteration numbers.
        Averages results for each iteration across 10 experiment iterates."""
     num_iterations = 30
@@ -28,6 +28,8 @@ def aggregate_results(results_data, ground_truth_A, ground_truth_D):
 
         # Loop through the experiment replicates
         for key in sorted(results_data.keys()):
+            ground_truth_A = ground_truth_A_list[key-1]
+            ground_truth_D = ground_truth_D_list[key - 1]
             A = results_data[key]['est A values'][iteration]
             print(f'estimated A at iteration {iteration}: {A}')
             A_maes.append(compute_mae(A, ground_truth_A))
@@ -61,12 +63,12 @@ def compute_mae(estimated, ground_truth):
 #     absolute_percentage_errors = np.abs((estimated - ground_truth) / ground_truth) * 100
 #     return np.percentile(absolute_percentage_errors, 10)
 
-def plot_mae_vs_iterations(results_data_version1, ground_truth_A1, ground_truth_GGT1,
-                            results_data_version2=None, ground_truth_A2=None, ground_truth_GGT2=None):
+def plot_mae_vs_iterations(results_data_version1, ground_truth_A1_list, ground_truth_GGT1_list,
+                            results_data_version2=None, ground_truth_A2=None, ground_truth_GGT2=None, d=None):
     # Aggregate the estimated A and GGT values from version 1
     A_mean_maes_1, A_mae_std_errs_1, D_mean_maes_1, D_mae_std_errs_1 = aggregate_results(results_data_version1,
-                                                                                         ground_truth_A1,
-                                                                                         ground_truth_GGT1)
+                                                                                         ground_truth_A1_list,
+                                                                                         ground_truth_GGT1_list)
 
     iterations = np.arange(1, len(A_mean_maes_1) + 1)
 
@@ -98,7 +100,7 @@ def plot_mae_vs_iterations(results_data_version1, ground_truth_A1, ground_truth_
     # plt.yscale('log')  # Uncomment if you want a log scale
     plt.legend()
     plt.grid(True)
-    plt.title('MAE of Estimated Parameters vs Iterations')
+    plt.title(f'MAE of Estimated Parameters vs Iterations for Random SDEs of dimension {d}')
     plt.show()
 
 
@@ -128,17 +130,32 @@ def retrieve_true_A_D(exp_number, version):
     return A, np.matmul(G, G.T)
 
 
-def plot_exp_results(exp_number, version, num_reps=10):
+def plot_exp_results(exp_number, version=None, d= None, num_reps=10):
     results_data_global = {}
-    ground_truth_A1, ground_truth_GGT1 = retrieve_true_A_D(exp_number, version)
+    ground_truth_A_list = []
+    ground_truth_D_list = []
     for i in range(1, num_reps+1):
-        filename = f'Results_experiment_{exp_number}/version-{version}_replicate-{i}.pkl'
+        if exp_number != "random":
+            filename = f'Results_experiment_{exp_number}/version-{version}_replicate-{i}.pkl'
+        else:
+            filename = f'Results_experiment_{exp_number}_{d}/replicate-{i}.pkl'
         with open(filename, 'rb') as f:
             results_data = pickle.load(f)
-        results_data_global[i]=results_data
-    plot_mae_vs_iterations(results_data_global, ground_truth_A1, ground_truth_GGT1)
+        if exp_number == 'random':
+            ground_truth_A_list.append(results_data['true_A'])
+            ground_truth_D_list.append(results_data['true_D'])
 
-plot_exp_results(exp_number = 2, version = 1, num_reps=1)
+        results_data_global[i]=results_data
+
+    if exp_number != 'random':
+        ground_truth_A1, ground_truth_GGT1 = retrieve_true_A_D(exp_number, version)
+        ground_truth_A_list = [ground_truth_A1] * num_reps
+        ground_truth_D_list = [ground_truth_GGT1] * num_reps
+
+    plot_mae_vs_iterations(results_data_global, ground_truth_A_list, ground_truth_D_list, d=d)
+
+plot_exp_results(exp_number = 'random', d=10, num_reps=10)
+# plot_exp_results(exp_number = 1, version = 2, num_reps=1)
 # plot_exp_results(exp_number = 1, version = 2)
 # plot_exp_results(exp_number = 3, version = 1)
 # plot_exp_results(exp_number = 3, version = 2)

@@ -379,19 +379,61 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-2):
+def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=1e-10):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
+    log_scale = np.min(K) < log_threshold  # Check if we should switch to log-scale computations
+    if log_scale:
+        log_K = np.log(K + 1e-300)  # Add a small value to prevent log(0) in case K has zeros
+        log_a = np.log(a + 1e-300)
+        log_b = np.log(b + 1e-300)
+        log_u = np.zeros(K.shape[0])
+        log_v = np.zeros(K.shape[1])
+    else:
+        log_K, log_a, log_b = None, None, None  # Placeholder in case we don't use log-scale
+
     for _ in range(maxiter):
         u_prev = u
-        u = a / (K @ v)
-        v = b / (K.T @ u)
-        tmp = np.diag(u) @ K @ np.diag(v)
+
+        if log_scale:
+            # Perform updates in the log domain
+            log_u = log_a - np.log(np.exp(log_K + log_v).sum(axis=1) + 1e-300)
+            log_v = log_b - np.log(np.exp(log_K.T + log_u[:, np.newaxis]).sum(axis=0) + 1e-300)
+            u = np.exp(log_u)
+            v = np.exp(log_v)
+        else:
+            # Perform standard Sinkhorn update
+            u = a / (K @ v)
+            v = b / (K.T @ u)
+
+        # Calculate the transport plan
+        if log_scale:
+            tmp = np.exp(log_K + log_u[:, np.newaxis] + log_v)
+        else:
+            tmp = np.diag(u) @ K @ np.diag(v)
+
+        # Check for convergence based on the error
         err = np.linalg.norm(tmp.sum(axis=1) - a)
         if err < stopThr or np.linalg.norm(u - u_prev) / np.linalg.norm(u_prev) < epsilon:
             break
+
     return tmp
+
+
+# def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-2):
+#     u = np.ones(K.shape[0])
+#     v = np.ones(K.shape[1])
+#
+#     for _ in range(maxiter):
+#         u_prev = u
+#         u = a / (K @ v)
+#         v = b / (K.T @ u)
+#         tmp = np.diag(u) @ K @ np.diag(v)
+#         err = np.linalg.norm(tmp.sum(axis=1) - a)
+#         if err < stopThr or np.linalg.norm(u - u_prev) / np.linalg.norm(u_prev) < epsilon:
+#             break
+#     return tmp
 
 
 def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_splits = False):

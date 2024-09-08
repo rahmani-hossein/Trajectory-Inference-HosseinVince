@@ -70,13 +70,13 @@ def run_generic_experiment(points, A, G, d, verbose = False):
     results_data['est A values'] = est_A_list
     return results_data
 
-def run_generic_experiment_replicates(exp_number, num_replicates, version='random'):
+def run_generic_experiment_replicates(exp_number, num_replicates, version='random', d = None):
     if exp_number == 1:
         d = 1
     elif exp_number == 2 or exp_number == 3:
         d = 2
     elif exp_number == 'random':
-        d = np.random.randint(low=3, high=11)
+        # d = np.random.randint(low=3, high=11)
         print('random SDE will have dimension:', d)
     for i in range(1, num_replicates + 1):
         print(f'\nRunning iterate {i} of experiment {exp_number} version {version}')
@@ -91,15 +91,15 @@ def run_generic_experiment_replicates(exp_number, num_replicates, version='rando
             results_data = run_experiment_3(points, version=version)
         elif exp_number == 'random':
             results_data = run_experiment_random(points, d)
-        # Ensure the directory exists
-        results_dir = f'Results_experiment_{exp_number}_{d}'
-        os.makedirs(results_dir, exist_ok=True)
 
         # Create the filename and filepath
         if exp_number != 'random':
+            results_dir = f'Results_experiment_{exp_number}'
             filename = f'version-{version}_replicate-{i}.pkl'
         else:
+            results_dir = f'Results_experiment_{exp_number}_{d}'
             filename = f'replicate-{i}.pkl'
+        os.makedirs(results_dir, exist_ok=True)
         filepath = os.path.join(results_dir, filename)
 
         # Get a unique filepath to avoid overwriting
@@ -143,7 +143,23 @@ def run_experiment_random(points, d):
     G = np.random.uniform(low=-1, high=1, size=(d, d))
     return run_generic_experiment(points, A, G, d)
 
-run_generic_experiment_replicates(exp_number='random', num_replicates=10)
+def run_safely(exp_number, num_replicates, d):
+    try:
+        run_generic_experiment_replicates(exp_number=exp_number, num_replicates=num_replicates, d=d)
+    except Exception as e:
+        print(f"Error occurred during execution with d={d}: {e}")
+
+# Safely running the experiments
+run_safely(exp_number='random', num_replicates=10, d=20)
+run_safely(exp_number='random', num_replicates=10, d=50)
+run_safely(exp_number='random', num_replicates=10, d=100)
+# run_safely(exp_number='random', num_replicates=10, d=5)
+# run_safely(exp_number='random', num_replicates=10, d=6)
+# run_safely(exp_number='random', num_replicates=10, d=7)
+# run_safely(exp_number='random', num_replicates=10, d=8)
+# run_safely(exp_number='random', num_replicates=10, d=9)
+# run_safely(exp_number='random', num_replicates=10, d=10)
+
 # run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=2)
 # run_generic_experiment_replicates(exp_number=1, num_replicates=10, version=1)
 # run_generic_experiment_replicates(exp_number=3, num_replicates=10, version=1)
