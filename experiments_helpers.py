@@ -364,16 +364,17 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9):
+def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-3):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
     for _ in range(maxiter):
+        u_prev = u
         u = a / (K @ v)
         v = b / (K.T @ u)
         tmp = np.diag(u) @ K @ np.diag(v)
         err = np.linalg.norm(tmp.sum(axis=1) - a)
-        if err < stopThr:
+        if err < stopThr or np.linalg.norm(u - u_prev) / np.linalg.norm(u_prev) < epsilon:
             break
     return tmp
 

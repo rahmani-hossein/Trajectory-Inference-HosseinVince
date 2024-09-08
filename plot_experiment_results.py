@@ -136,7 +136,7 @@ def plot_exp_results(exp_number, version, num_reps=10):
         results_data_global[i]=results_data
     plot_mae_vs_iterations(results_data_global, ground_truth_A1, ground_truth_GGT1)
 
-plot_exp_results(exp_number = 3, version = 1, num_reps=10)
+plot_exp_results(exp_number = 2, version = 1, num_reps=1)
 # plot_exp_results(exp_number = 1, version = 2)
 # plot_exp_results(exp_number = 3, version = 1)
 # plot_exp_results(exp_number = 3, version = 2)
