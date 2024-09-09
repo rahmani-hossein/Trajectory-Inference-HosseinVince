@@ -79,8 +79,7 @@ def calculate_correlation(estimated_matrix, ground_truth_matrix):
 
 
 
-def plot_mae_and_correlation_vs_iterations(results_data_version1, ground_truth_A1_list, ground_truth_GGT1_list,
-                                           results_data_version2=None, ground_truth_A2=None, ground_truth_GGT2=None, exp_title = None):
+def plot_mae_and_correlation_vs_iterations(results_data_version1, ground_truth_A1_list, ground_truth_GGT1_list, exp_title = None):
     # Aggregate the estimated A and GGT values from version 1
     A_mean_maes_1, A_mae_std_errs_1, D_mean_maes_1, D_mae_std_errs_1, A_correlations_1, D_correlations_1 = aggregate_results(
         results_data_version1,
@@ -93,24 +92,10 @@ def plot_mae_and_correlation_vs_iterations(results_data_version1, ground_truth_A
     plt.figure(figsize=(10, 6))
 
     # Version 1 (with error bars)
-    plt.errorbar(iterations, A_mean_maes_1, yerr=A_mae_std_errs_1, label='A1 MAE (Version 1)', color='black',
+    plt.errorbar(iterations, A_mean_maes_1, yerr=A_mae_std_errs_1, label='MAE between estimated A and true A', color='black',
                  linestyle='-', marker='o')
-    plt.errorbar(iterations, D_mean_maes_1, yerr=D_mae_std_errs_1, label='G1 MAE (Version 1)', color='black',
+    plt.errorbar(iterations, D_mean_maes_1, yerr=D_mae_std_errs_1, label='MAE between estimated H and true H', color='black',
                  linestyle=':', marker='o', markerfacecolor='none', markeredgecolor='black')
-
-    # Version 2 (if provided)
-    if results_data_version2 is not None:
-        # Aggregate results for version 2
-        A_mean_maes_2, A_mae_std_errs_2, D_mean_maes_2, D_mae_std_errs_2, A_correlations_2, D_correlations_2 = aggregate_results(
-            results_data_version2,
-            ground_truth_A2,
-            ground_truth_GGT2)
-
-        # Version 2 (with error bars)
-        plt.errorbar(iterations, A_mean_maes_2, yerr=A_mae_std_errs_2, label='A2 MAE (Version 2)', color='red',
-                     linestyle='-', marker='D')
-        plt.errorbar(iterations, D_mean_maes_2, yerr=D_mae_std_errs_2, label='G2 MAE (Version 2)', color='red',
-                     linestyle=':', marker='o', markerfacecolor='none', markeredgecolor='black')
 
     # Customize the MAE plot
     plt.xlabel('Iteration')
@@ -127,15 +112,9 @@ def plot_mae_and_correlation_vs_iterations(results_data_version1, ground_truth_A
     plt.figure(figsize=(10, 6))
 
     # Plot correlation for version 1
-    plt.errorbar(iterations, A_correlations_1, label='A1 Correlation (Version 1)', color='black', linestyle='-', marker='o')
-    plt.errorbar(iterations, D_correlations_1, label='G1 Correlation (Version 1)', color='black', linestyle=':', marker='o', markerfacecolor='none', markeredgecolor='black')
+    plt.errorbar(iterations, A_correlations_1, label='Correlation between estimated A and true A', color='black', linestyle='-', marker='o')
+    plt.errorbar(iterations, D_correlations_1, label='Correlation between estimated H and true H', color='black', linestyle=':', marker='o', markerfacecolor='none', markeredgecolor='black')
 
-    # Plot correlation for version 2 (if provided)
-    if results_data_version2 is not None:
-        plt.errorbar(iterations, A_correlations_2, label='A2 Correlation (Version 2)', color='red', linestyle='-',
-                 marker='D')
-        plt.errorbar(iterations, D_correlations_2, label='G2 Correlation (Version 2)', color='red', linestyle=':',
-                 marker='D')
 
     # Customize the correlation plot
     plt.xlabel('Iteration')
@@ -205,6 +184,7 @@ def plot_exp_results(exp_number, version=None, d=None, num_reps=10):
                                                exp_title=f'SDE {version} from example {exp_number}')
 
 # plot_exp_results(exp_number='random', d=50, num_reps=10)
+plot_exp_results(exp_number = 2, version = 1, num_reps=10)
 plot_exp_results(exp_number = 2, version = 2, num_reps=10)
 # plot_exp_results(exp_number = 1, version = 2)
 # plot_exp_results(exp_number = 3, version = 1)
