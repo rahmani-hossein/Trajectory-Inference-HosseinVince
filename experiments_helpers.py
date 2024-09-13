@@ -2,6 +2,8 @@ import math
 import numpy as np
 import ot
 import os
+from scipy.special import logsumexp
+
 import warnings
 import matplotlib.pyplot as plt
 from scipy.linalg import expm
@@ -10,7 +12,7 @@ import pickle
 from scipy.stats import multivariate_normal
 
 
-def generate_independent_points(d, num_points, min_magnitude=20, max_magnitude=100, min_angle_degrees=30):
+def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10, min_angle_degrees=30):
     points = []
 
     # Generate first random point
@@ -465,8 +467,7 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-
-def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=0):
+def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=1e-10):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
@@ -506,6 +507,86 @@ def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2,
             break
 
     return tmp
+
+
+def sinkhorn_multidimensional_new(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=0,
+                              reg_factor=1e-8, min_val=1e-300, return_both_plans=False):
+    u = np.ones(K.shape[0])
+    v = np.ones(K.shape[1])
+
+    # Regularize K to avoid zeros and very small values
+    K[K < min_val] = min_val
+
+    # Decide whether to use log-scale based on the smallest value in K
+    log_scale = np.min(K) < log_threshold
+    if log_scale:
+        print('joey')
+        # Log-scale variables
+        log_K = np.log(K)
+        log_a = np.log(a + min_val)
+        log_b = np.log(b + min_val)
+        log_u = np.zeros(K.shape[0])
+        log_v = np.zeros(K.shape[1])
+    else:
+        log_K = log_a = log_b = None
+
+    for it in range(maxiter):
+        if log_scale:
+            log_u_prev = log_u.copy()
+
+            # Perform log-domain updates
+            log_u = log_a - logsumexp(log_K + log_v, axis=1)
+            log_v = log_b - logsumexp(log_K.T + log_u[:, np.newaxis], axis=0)
+
+            # Compute relative change for convergence
+            rel_change = np.linalg.norm(log_u - log_u_prev)
+            if rel_change < epsilon:
+                break
+
+        else:
+            u_prev = u.copy()
+
+            # Standard Sinkhorn updates
+            u = a / (K @ v)
+            v = b / (K.T @ u)
+
+            # Compute relative change for convergence
+            denom = np.linalg.norm(u_prev)
+            if np.isfinite(denom) and denom > 0:
+                rel_change = np.linalg.norm(u - u_prev) / denom
+            else:
+                rel_change = np.inf
+
+            if rel_change < epsilon:
+                break
+
+    if log_scale:
+        # Compute the transport plan using log-scale computations
+        exponent = log_K + log_u[:, np.newaxis] + log_v
+        max_exponent = np.max(exponent)
+        exponent -= max_exponent  # Shift exponent for numerical stability
+        pi_log = np.exp(exponent)
+        pi_log[pi_log < min_val] = min_val  # Avoid underflow
+        pi_log /= np.sum(pi_log)  # Normalize transport plan
+
+        if return_both_plans:
+            # Compute standard transport plan for comparison
+            u_standard = np.exp(log_u)
+            v_standard = np.exp(log_v)
+            pi_standard = np.diag(u_standard) @ K @ np.diag(v_standard)
+            pi_standard[pi_standard < min_val] = min_val  # Avoid underflow
+            pi_standard /= np.sum(pi_standard)
+            return pi_log, pi_standard
+        else:
+            return pi_log
+
+    else:
+        # Compute transport plan using standard (non-log-scale) method
+        pi_standard = np.diag(u) @ K @ np.diag(v)
+        pi_standard[pi_standard < min_val] = min_val  # Avoid underflow
+        pi_standard /= np.sum(pi_standard)
+        return pi_standard
+
 
 
 # def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-2):
@@ -570,7 +651,6 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
 
             # Flatten the differences for all pairs (vectorized)
             dX_ij_flattened = dX_ij.reshape(num_trajectories, d)
-
             try:
                 # Vectorized PDF computation for all j's
                 K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
