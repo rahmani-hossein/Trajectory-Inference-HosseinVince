@@ -10,7 +10,7 @@ import pickle
 from scipy.stats import multivariate_normal
 
 
-def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10, min_angle_degrees=30):
+def generate_independent_points(d, num_points, min_magnitude=20, max_magnitude=100, min_angle_degrees=30):
     points = []
 
     # Generate first random point
@@ -269,21 +269,34 @@ def estimate_A_exp(X, dt, GGT=None, pinv=False):
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
-def estimate_A_bibbona(X, dt, pinv = False):
+def estimate_A_exact(X, dt):
+    """
+    Calculate the closed form estimator A_hat using observed data from multiple trajectories
+    using the expectation formulation.
+
+    Parameters:
+        X (numpy.ndarray): 3D array where each slice corresponds to a single trajectory (num_trajectories, num_steps, d).
+        dt (float): Discretization time step.
+
+    Returns:
+        numpy.ndarray: Estimated drift matrix A given the set of trajectories.
+    """
     num_trajectories, num_steps, d = X.shape
-    numerator = np.zeros((d,d))
-    denominator = np.zeros((d, d))
-    # compute mean
-    X_bar = np.mean(X)
+    # Initialize cumulative sums
+    sum_Xtp1_XtT = np.zeros((d, d))  # Sum of X_{t+1} * X_t^T
+    sum_Xt_XtT = np.zeros((d, d))    # Sum of X_t * X_t^T
+
     for t in range(num_steps - 1):
+        sum_Xtp1_Xt = np.zeros((d, d))
+        sum_Xt_Xt = np.zeros((d, d))
         for n in range(num_trajectories):
-            numerator += np.outer((X[n, t+1, :]-X_bar), (X[n, t, :]-X_bar))
-            denominator += np.outer(X[n, t, :]-X_bar, X[n, t, :]-X_bar)
-    if pinv:
-        partial = np.matmul(numerator, np.linalg.pinv(denominator))
-    else:
-        partial = left_Var_Equation(denominator, numerator)
-    return 1/dt * np.log(partial)
+            Xt = X[n, t, :]           # X_t for trajectory n
+            Xtp1 = X[n, t + 1, :]     # X_{t+1} for trajectory n
+            sum_Xtp1_Xt += np.outer(Xtp1, Xt)  # X_{t+1} * X_t^T
+            sum_Xt_Xt += np.outer(Xt, Xt)      # X_t * X_t^T
+        sum_Xtp1_XtT += sum_Xtp1_Xt / num_trajectories
+        sum_Xt_XtT += sum_Xt_Xt / num_trajectories
+    return (np.log(sum_Xtp1_XtT) - np.log(sum_Xt_XtT )) * (1/dt)
 
 def estimate_GGT(trajectories, T, est_A=None):
     """
@@ -318,6 +331,79 @@ def estimate_GGT(trajectories, T, est_A=None):
 
     # Divide by total time T*num_trajectories to normalize
     GGT /= (T - dt) * num_trajectories
+    return GGT
+
+# def estimate_GGT_exact(X, T, est_A = None):
+#     """
+#     Estimate the matrix GG^T from multiple trajectories of a multidimensional
+#     Ornstein-Uhlenbeck process.
+#
+#     Parameters:
+#         X (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
+#         T (float): Total time period.
+#
+#     Returns:
+#         numpy.ndarray: Estimated GG^T matrix.
+#     """
+#     num_trajectories, num_steps, d = X.shape
+#
+#     dt = T/num_steps
+#
+#     # Initialize the GG^T matrix
+#     GGT = np.zeros((d, d))
+#
+#
+#     # Sum up the products of increments for each dimension pair across all trajectories and steps
+#     for t in range(num_steps-1):
+#         for i in range(d):
+#             for j in range(d):
+#                 for n in range(num_trajectories):
+#                     if est_A is None:
+#                         dX_i = X[n, t+1, i] - X[n, t, i]
+#                         dX_j = X[n, t+1, j] - X[n, t, j]
+#                     else:
+#                         dX = X[n, t+1, :] - np.matmul((X[n, t, :]), expm(est_A*dt))
+#                         dX_i = dX[i]
+#                         dX_j = dX[j]
+#                     GGT[i, j] += dX_i * dX_j
+#
+#     GGT /= (T - dt) * num_trajectories
+#     return GGT
+
+def estimate_GGT_exact(X, T, est_A=None):
+    """
+    Estimate the matrix GG^T from multiple trajectories of a multidimensional
+    Ornstein-Uhlenbeck process.
+
+    Parameters:
+        X (numpy.ndarray): A 3D array where each "slice" (2D array) corresponds to a single trajectory.
+        T (float): Total time period.
+        est_A (numpy.ndarray, optional): Estimated drift matrix A. If provided, the increments will be adjusted by the deterministic drift.
+
+    Returns:
+        numpy.ndarray: Estimated GG^T matrix.
+    """
+    num_trajectories, num_steps, d = X.shape
+    dt = T / num_steps
+
+    # Initialize the GG^T matrix
+    GGT = np.zeros((d, d))
+
+    if est_A is None:
+        # Compute increments ΔX for each trajectory (no drift adjustment)
+        increments = np.diff(X, axis=1)
+    else:
+        # Precompute exp(A * dt)
+        exp_Adt = expm(est_A * dt)
+        # Adjust increments: X_{t+1} - exp(A * dt) * X_t
+        increments = X[:, 1:, :] - np.einsum('ij,nkj->nki', exp_Adt, X[:, :-1, :])
+
+    # Efficient computation of GG^T using einsum
+    GGT = np.einsum('nti,ntj->ij', increments, increments)
+
+    # Normalize by total time and number of trajectories
+    GGT /= (T - dt) * num_trajectories
+
     return GGT
 
 ### Optimal Transport matching from only observed marginals
@@ -379,7 +465,8 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
-def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=1e-10):
+
+def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=0):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
@@ -533,10 +620,11 @@ def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, line
     X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, linearization=linearization, report_time_splits=report_time_splits)
     if linearization:
         A_OT = estimate_A_exp(X_OT, dt)
+        G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
     else:
         # print('bibbona: this should not be happening')
-        A_OT = estimate_A_bibbona(X_OT, dt)
-    G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
+        A_OT = estimate_A_exact(X_OT, dt)
+        G_OT = estimate_GGT_exact(X_OT, T, est_A=A_OT)
     return A_OT, G_OT, X_OT
 
 
