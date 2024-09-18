@@ -2,6 +2,8 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import os
+import re
 
 
 def aggregate_results(results_data, ground_truth_A_list, ground_truth_D_list):
@@ -183,9 +185,99 @@ def plot_exp_results(exp_number, version=None, d=None, num_reps=10):
         plot_mae_and_correlation_vs_iterations(results_data_global, ground_truth_A_list, ground_truth_D_list,
                                                exp_title=f'SDE {version} from example {exp_number}')
 
+
+def compute_mse(estimated, ground_truth):
+    """Compute Mean Squared Error (MSE)"""
+    mse = np.mean((estimated - ground_truth) ** 2)
+    return mse
+
+
+def plot_mse_vs_N(directory_path):
+    """
+    This function plots the MSE between estimated and true A/D at iteration 30 versus the value of N.
+
+    Parameters:
+    - directory_path: Path to the directory containing the replicate pickle files.
+    """
+
+    N_values = []
+    A_mse_values = []
+    D_mse_values = []
+
+    # List to store filenames and extracted N values
+    files_with_N = []
+
+    # Iterate over all .pkl files in the specified directory
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.pkl'):
+            # Extract N from the filename using regex
+            match = re.search(r'_N-(\d+)', filename)
+            if match:
+                N = int(match.group(1))
+                files_with_N.append((N, filename))
+
+    # Sort files based on extracted N values
+    files_with_N.sort()
+
+    # Process files in order of N
+    for N, filename in files_with_N:
+        file_path = os.path.join(directory_path, filename)
+
+        # Load the replicate data
+        with open(file_path, 'rb') as f:
+            results_data = pickle.load(f)
+
+        # Extract true A, true D, est A values, est D values
+        true_A = results_data['true_A']
+        true_D = results_data['true_D']
+        est_A_values = results_data['est A values']
+        est_D_values = results_data['est D values']
+        print(results_data['initial D'])
+
+        # Get the estimated A and D at iteration 30 (index 29)
+        est_A_30 = est_A_values[29]
+        est_D_30 = est_D_values[29]
+
+        # Compute the MSE for A and D at iteration 30
+        A_mse = compute_mse(est_A_30, true_A)
+        D_mse = compute_mse(est_D_30, true_D)
+
+        # Append the results
+        N_values.append(N)
+        A_mse_values.append(A_mse)
+        D_mse_values.append(D_mse)
+
+    # Convert to numpy arrays for plotting
+    N_values = np.array(N_values)
+    A_mse_values = np.array(A_mse_values)
+    D_mse_values = np.array(D_mse_values)
+
+    # Plot the MSE of A vs N
+    plt.figure(figsize=(10, 6))
+    plt.plot(N_values, A_mse_values, marker='o', linestyle='-', color='blue')
+    plt.xlabel('N')
+    plt.ylabel('MSE of A')
+    plt.title('MSE of Estimated A vs N (at iteration 30)')
+    plt.grid(True)
+    plt.show()
+
+    # Plot the MSE of D vs N
+    plt.figure(figsize=(10, 6))
+    plt.plot(N_values, D_mse_values, marker='o', linestyle='--', color='red')
+    plt.xlabel('N')
+    plt.ylabel('MSE of D')
+    plt.title('MSE of Estimated D vs N (at iteration 30)')
+    plt.grid(True)
+    plt.show()
+
+
+# Example usage:
+directory_path = 'Results_experiment_2'
+plot_mse_vs_N(directory_path)
+
 # plot_exp_results(exp_number='random', d=50, num_reps=10)
-plot_exp_results(exp_number = 2, version = 1, num_reps=10)
-plot_exp_results(exp_number = 2, version = 2, num_reps=10)
+# plot_exp_results(exp_number = 2, version = 1, num_reps=10)
+# plot_exp_results(exp_number = 2, version = 2, num_reps=10)
 # plot_exp_results(exp_number = 1, version = 2)
 # plot_exp_results(exp_number = 3, version = 1)
 # plot_exp_results(exp_number = 3, version = 2)
