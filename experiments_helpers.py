@@ -1,78 +1,125 @@
 import math
-import numpy as np
 import ot
 import os
 from scipy.special import logsumexp
-
-import warnings
 import matplotlib.pyplot as plt
 from scipy.linalg import expm
 import time
 import pickle
 from scipy.stats import multivariate_normal
+import numpy as np
 
 
-def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10, min_angle_degrees=30):
-    points = []
+def angle_between(v1, v2):
+    """
+    Helper function to compute the angle between two vectors in radians.
+    """
+    dot_product = np.dot(v1, v2)
+    norms = np.linalg.norm(v1) * np.linalg.norm(v2)
+    cos_angle = dot_product / norms
+    cos_angle = np.clip(cos_angle, -1.0, 1.0)  # Clip for numerical stability
+    return np.arccos(cos_angle)
 
-    # Generate first random point
-    point = np.random.uniform(-1, 1, d)
-    point = point / np.linalg.norm(point)  # Normalize
-    scale = np.random.uniform(min_magnitude, max_magnitude)  # Scale to desired magnitude
-    point = point * scale
-    points.append(point)
 
-    def angle_between(v1, v2):
-        """Returns the angle in radians between vectors 'v1' and 'v2'"""
-        dot_product = np.dot(v1, v2)
-        norms = np.linalg.norm(v1) * np.linalg.norm(v2)
-        cos_angle = dot_product / norms
-        # Clip to handle numerical precision issues that may push cos_angle slightly out of range
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-        return np.arccos(cos_angle)
-
+def generate_independent_points(d, num_points, min_magnitude=2, max_magnitude=10, min_angle_degrees=30, max_its=1000):
+    '''
+    Theorem 1 implies that a d-dimensional 0-mean linear additive noise is identifiable from X0 if X0 is supported on
+    d linearly independent points. This function generates linearly independent points in d-dimensional space.
+    Args:
+        d: dimension
+        num_points: number of points to generate (if > d, then additional points are generated without constraints)
+        min_magnitude: minimum Euclidean norm for considered points
+        max_magnitude: maximum Euclidean norm for considered points
+        min_angle_degrees: minimum pairwise angle required between considered points in degrees
+        max_its: maximum number of iterations to attempt to generate linearly independent points with min_angle_degrees
+    Returns:
+        list of numpy.ndarray: list of linearly independent points
+    '''
     # Convert minimum angle from degrees to radians
     min_angle_radians = np.radians(min_angle_degrees)
 
-    # Generate remaining linearly independent points
-    for _ in range(1, num_points):
-        while True:
+    points = []
+    # Generate first random point
+    point = np.random.uniform(-1, 1, d)
+    point = point / np.linalg.norm(point)  # Normalize
+    scale = np.random.uniform(min_magnitude, max_magnitude)
+    point = point * scale
+    points.append(point)
+    # Generate remaining linearly independent points with at least min_angle_radians between each pair
+    for _ in range(1, min(num_points, d)):
+        its = 0
+        independent = False
+        while not independent:
+            its += 1
+            # Generate candidate point
             candidate_point = np.random.uniform(-1, 1, d)
-            candidate_point = candidate_point / np.linalg.norm(candidate_point)  # Normalize
+            candidate_point = candidate_point / np.linalg.norm(candidate_point)
             scale = np.random.uniform(min_magnitude, max_magnitude)
             candidate_point = candidate_point * scale
 
-            # Check linear independence by ensuring angles between vectors are above threshold
-            independent = True
-            for existing_point in points:
-                angle = angle_between(candidate_point, existing_point)
-                if angle < min_angle_radians:
-                    independent = False
-                    break
+            # check for linear independence
+            matrix = np.vstack(points + [candidate_point])
+            rank = np.linalg.matrix_rank(matrix)
+            if rank == len(points) + 1:
+                # Check the angles with all existing points to also ensure that pairwise angles are sufficiently large
+                independent = True
+                for existing_point in points:
+                    angle = angle_between(candidate_point, existing_point)
+                    if angle < min_angle_radians:
+                        independent = False
+                        if its > max_its:
+                            print(
+                                f'max number of iterations {max_its} exceeded. Consider increasing max_its or '
+                                f'decreasing min_angle_degrees')
+                            break
+                if independent:
+                    points.append(candidate_point)
 
-            if independent:
-                points.append(candidate_point)
-                break
-
+    # If num_points > d, generate additional points without constraints
+    for _ in range(d, num_points):
+        candidate_point = np.random.uniform(-1, 1, d)
+        candidate_point = candidate_point / np.linalg.norm(candidate_point)  # Normalize
+        scale = np.random.uniform(min_magnitude, max_magnitude)
+        candidate_point = candidate_point * scale
+        points.append(candidate_point)
     return points
 
-def generate_random_matrix_with_eigenvalue_constraint(d, eigenvalue_threshold=1):
-    while True:
-        # Step 1: Generate a random matrix (e.g., from a normal distribution)
-        M = np.random.uniform(low=-5, high=5, size=(d, d))
 
-        # Step 2: Compute the eigenvalues of the matrix
+def generate_random_matrix_with_eigenvalue_constraint(d, eigenvalue_threshold=1, sparsity_threshold=0,
+                                                      epsilon=0, max_iterations=1e5):
+    '''
+    Args:
+        d: dimension of square matrix to be generated
+        eigenvalue_threshold: maximal real part of eigenvalue
+        sparsity_threshold: fraction of elements to set to zero, used for causal discovery experiment
+        epsilon: minimum magnitude for matrix entries (set to 0.5 for causal discovery experiment)
+        max_iterations: maximum number of iterations to attempt to generate a matrix with eigenvalue constraint
+    Returns:
+        np.array: d x d random matrix with eigenvalue constraint
+    '''
+    for _ in range(int(max_iterations)):
+        M = np.random.uniform(low=epsilon, high=5, size=(d, d))
+        sign_matrix = np.random.choice([-1, 1], size=M.shape)
+        M = M * sign_matrix
+
+        # Introduce sparsity if applicable
+        if sparsity_threshold > 0:
+            mask = np.random.rand(d, d) < sparsity_threshold
+            M = np.multiply(M, mask)
+
+        # Eigenvalue check
         eigenvalues = np.linalg.eigvals(M)
-
-        # Step 3: Check if the largest eigenvalue is less than the threshold
-        max_eigenvalue = np.max(eigenvalues)
+        max_eigenvalue = np.max(eigenvalues.real)
         if max_eigenvalue < eigenvalue_threshold:
-            break  # Exit the loop if the condition is satisfied
+            return M  # Return the matrix if the condition is satisfied
 
-    # Step 4: Return the matrix that satisfies the constraint
-    return M
+    # Step 5: Raise an exception if no valid matrix was found within the iteration limit
+    raise ValueError(
+        f"Failed to generate a matrix of dimension {d} with max real eigenvalue {eigenvalue_threshold} after {max_iterations} iterations. Consider lowering eigenvalue threshold or increasing max_iterations")
 
-def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, stationary=False, matrix_exponential=False):
+
+def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, stationary=False,
+                               matrix_exponential=False):
     '''
     Args:
         num_trajectories: number of trajectories
@@ -92,7 +139,6 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
     n_measured_times = int(T / dt)
     X_measured = np.zeros((num_trajectories, n_measured_times, d))
     rate = int(dt / dt_EM)
-
     for n in range(num_trajectories):
         if X0_dist is not None:
             # Sample X0 based on the provided probability distribution
@@ -111,7 +157,9 @@ def linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=
             X_measured[n, i, :] = X_true[i * rate, :]
     return X_measured
 
-def killed_linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, matrix_exponential=False, stationary=False):
+
+def killed_linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X0_dist=None, matrix_exponential=False,
+                                      stationary=False):
     n_measured_times = int(T / dt)
     X_measured = np.zeros((num_trajectories, n_measured_times, d))
     for i in range(n_measured_times):
@@ -130,6 +178,7 @@ def killed_linear_additive_noise_data(num_trajectories, d, T, dt_EM, dt, A, G, X
                 # use consistent X0s across the measured times
                 X_measured[n, i, :] = ou_process(measured_T, dt_EM, A, G, X0_)[-1]
     return X_measured
+
 
 def ou_process_matrix_exponential(T, dt, A, G, X0, seed=None):
     """
@@ -170,6 +219,7 @@ def ou_process_matrix_exponential(T, dt, A, G, X0, seed=None):
 
     return X
 
+
 def ou_process(T, dt, A, G, X0, seed=None):
     """
     Simulate a single trajectory of a multidimensional Ornstein-Uhlenbeck process:
@@ -199,7 +249,8 @@ def ou_process(T, dt, A, G, X0, seed=None):
 
     return X
 
-def plot_trajectories(X, T, dt, save_file = False, N_truncate = None):
+
+def plot_trajectories(X, T, dt, save_file=False, N_truncate=None):
     """
     Plot the trajectories of a multidimensional process.
 
@@ -217,11 +268,9 @@ def plot_trajectories(X, T, dt, save_file = False, N_truncate = None):
     # Plot trajectories
     plt.figure(figsize=(12, 8))
 
-
     for n in range(num_trajectories):
         for d in range(num_dimensions):
-            plt.plot(time_steps, X[n, :, d ], label=f'{n}th trajectory dim {d}')
-
+            plt.plot(time_steps, X[n, :, d], label=f'{n}th trajectory dim {d}')
 
     # plt.title('Manten path dependent example', fontsize=20)
     plt.xlabel('Time', fontsize=16)
@@ -234,6 +283,7 @@ def plot_trajectories(X, T, dt, save_file = False, N_truncate = None):
         plot_filename = os.path.join('Raw_trajectory_figures', f"raw_trajectory_d-{num_dimensions}_stationary.png")
         plt.savefig(plot_filename)
     plt.show()
+
 
 ### MLE estimators for drift A and diffusion GGT
 
@@ -271,6 +321,7 @@ def estimate_A_exp(X, dt, GGT=None, pinv=False):
     else:
         return left_Var_Equation(sum_Ext_ExtT, sum_Edxt_Ext * (1 / dt))
 
+
 def estimate_A_exact(X, dt):
     """
     Calculate the closed form estimator A_hat using observed data from multiple trajectories
@@ -286,19 +337,20 @@ def estimate_A_exact(X, dt):
     num_trajectories, num_steps, d = X.shape
     # Initialize cumulative sums
     sum_Xtp1_XtT = np.zeros((d, d))  # Sum of X_{t+1} * X_t^T
-    sum_Xt_XtT = np.zeros((d, d))    # Sum of X_t * X_t^T
+    sum_Xt_XtT = np.zeros((d, d))  # Sum of X_t * X_t^T
 
     for t in range(num_steps - 1):
         sum_Xtp1_Xt = np.zeros((d, d))
         sum_Xt_Xt = np.zeros((d, d))
         for n in range(num_trajectories):
-            Xt = X[n, t, :]           # X_t for trajectory n
-            Xtp1 = X[n, t + 1, :]     # X_{t+1} for trajectory n
+            Xt = X[n, t, :]  # X_t for trajectory n
+            Xtp1 = X[n, t + 1, :]  # X_{t+1} for trajectory n
             sum_Xtp1_Xt += np.outer(Xtp1, Xt)  # X_{t+1} * X_t^T
-            sum_Xt_Xt += np.outer(Xt, Xt)      # X_t * X_t^T
+            sum_Xt_Xt += np.outer(Xt, Xt)  # X_t * X_t^T
         sum_Xtp1_XtT += sum_Xtp1_Xt / num_trajectories
         sum_Xt_XtT += sum_Xt_Xt / num_trajectories
-    return (np.log(sum_Xtp1_XtT) - np.log(sum_Xt_XtT )) * (1/dt)
+    return (np.log(sum_Xtp1_XtT) - np.log(sum_Xt_XtT)) * (1 / dt)
+
 
 def estimate_GGT(trajectories, T, est_A=None):
     """
@@ -334,6 +386,7 @@ def estimate_GGT(trajectories, T, est_A=None):
     # Divide by total time T*num_trajectories to normalize
     GGT /= (T - dt) * num_trajectories
     return GGT
+
 
 # def estimate_GGT_exact(X, T, est_A = None):
 #     """
@@ -408,6 +461,7 @@ def estimate_GGT_exact(X, T, est_A=None):
 
     return GGT
 
+
 ### Optimal Transport matching from only observed marginals
 
 
@@ -467,7 +521,80 @@ def normalize_rows(matrix):
     return matrix / row_sums
 
 
+#
+#
+# def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=0):
+#     '''
+#     Oct 12 commented out
+#     Args:
+#         a:
+#         b:
+#         K:
+#         maxiter:
+#         stopThr:
+#         epsilon:
+#         log_threshold:
+#
+#     Returns:
+#
+#     '''
+#     u = np.ones(K.shape[0])
+#     v = np.ones(K.shape[1])
+#
+#     log_scale = np.min(K) < log_threshold  # Check if we should switch to log-scale computations
+#     if log_scale:
+#         log_K = np.log(K + 1e-300)  # Add a small value to prevent log(0) in case K has zeros
+#         log_a = np.log(a + 1e-300)
+#         log_b = np.log(b + 1e-300)
+#         log_u = np.zeros(K.shape[0])
+#         log_v = np.zeros(K.shape[1])
+#     else:
+#         log_K, log_a, log_b = None, None, None  # Placeholder in case we don't use log-scale
+#
+#     for _ in range(maxiter):
+#         u_prev = u
+#
+#         if log_scale:
+#             # Perform updates in the log domain
+#             log_u = log_a - np.log(np.exp(log_K + log_v).sum(axis=1))
+#             log_v = log_b - np.log(np.exp(log_K.T + log_u[:, np.newaxis]).sum(axis=0))
+#             u = np.exp(log_u)
+#             v = np.exp(log_v)
+#         else:
+#             # Perform standard Sinkhorn update
+#             u = a / (K @ v)
+#             v = b / (K.T @ u)
+#
+#         # Calculate the transport plan
+#         if log_scale:
+#             tmp = np.exp(log_u[:, np.newaxis] + log_K + log_v)
+#         else:
+#             tmp = np.diag(u) @ K @ np.diag(v)
+#
+#         # Check for convergence based on the error
+#         err = np.linalg.norm(tmp.sum(axis=1) - a)
+#         if np.linalg.norm(u_prev):
+#             if err < stopThr or np.linalg.norm(u - u_prev) / np.linalg.norm(u_prev) < epsilon:
+#                 break
+#
+#     return tmp
+#
+
 def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=1e-10):
+    '''
+    Sept 13 version
+    Args:
+        a:
+        b:
+        K:
+        maxiter:
+        stopThr:
+        epsilon:
+        log_threshold:
+
+    Returns:
+
+    '''
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
@@ -510,7 +637,7 @@ def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2,
 
 
 def sinkhorn_multidimensional_new(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1e-2, log_threshold=0,
-                              reg_factor=1e-8, min_val=1e-300, return_both_plans=False):
+                                  reg_factor=1e-8, min_val=1e-300, return_both_plans=False):
     u = np.ones(K.shape[0])
     v = np.ones(K.shape[1])
 
@@ -588,7 +715,6 @@ def sinkhorn_multidimensional_new(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1
         return pi_standard
 
 
-
 # def sinkhorn_multidimensional(a, b, K, maxiter=1000, stopThr = 1e-9, epsilon=1e-2):
 #     u = np.ones(K.shape[0])
 #     v = np.ones(K.shape[1])
@@ -604,7 +730,7 @@ def sinkhorn_multidimensional_new(a, b, K, maxiter=1000, stopThr=1e-9, epsilon=1
 #     return tmp
 
 
-def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_splits = False):
+def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_splits=False):
     marginal_samples = extract_marginal_samples(X)
     np.random.seed()
     num_time_steps = len(marginal_samples)
@@ -612,7 +738,7 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
     if D is None:
         D = np.eye(d)
     num_trajectories = marginal_samples[0].shape[0]
-    ps = [] # transport plans
+    ps = []  # transport plans
     sinkhorn_time = 0
     K_time = 0
     epsilon = 1e-8
@@ -627,14 +753,22 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
         if cur_est_A is None:
             cur_est_A = np.zeros((d, d))  # Set Brownian motion as reference SDE if no A inputted
 
-
         A_dt = cur_est_A * dt if linearization else expm(cur_est_A * dt)
         if linearization:
             A_X_t = np.matmul(A_dt, X_t.T)
-
-        # Regularize D once before the loop
-        D_reg = D + np.eye(D.shape[0]) * epsilon
-        cov_D_dt = D_reg * dt  # Precompute D * dt once to avoid repeated computation
+            D_reg = D + np.eye(D.shape[0]) * epsilon
+            cov_D_dt = D_reg * dt  # Precompute D * dt once to avoid repeated computation
+        else:
+            assert d == 1
+            D_reg = D
+            if cur_est_A[0][0] == 0:
+                cov_D_dt = D_reg * dt
+            else:
+                cov_D_dt = (D_reg / (2 * abs(cur_est_A[0][0]))) * (1 - np.exp(-2 * abs(cur_est_A[0][0]) * dt))
+                # cov_D_dt = D_reg * dt
+                #
+                # print('cov_wiki:', cov_D_dt)
+                # print('cov_opposite_sign:', cov_D_dt_)
 
         K = np.zeros((num_trajectories, num_trajectories))
 
@@ -665,7 +799,7 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
         t1 = time.time()
         p = sinkhorn_multidimensional(a=a, b=b, K=K)
         t2 = time.time()
-        sinkhorn_time += t2-t1
+        sinkhorn_time += t2 - t1
         ps.append(p)
 
     t1 = time.time()
@@ -688,7 +822,7 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
             OT_index_propagation[_, t] = int(j)
             X_OT[_, t + 1, :] = marginal_samples[t + 1][j]
     t2 = time.time()
-    ot_traj_time = t2-t1
+    ot_traj_time = t2 - t1
     if report_time_splits:
         print('Time setting up K:', K_time)
         print('Time doing Sinkhorn:', sinkhorn_time)
@@ -696,8 +830,10 @@ def create_OT_traj_md(X, D, dt, cur_est_A=None, linearization=True, report_time_
     return X_OT
 
 
-def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, linearization = True, report_time_splits = False):
-    X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, linearization=linearization, report_time_splits=report_time_splits)
+def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, linearization=True,
+                                report_time_splits=False):
+    X_OT = create_OT_traj_md(X, cur_est_D, dt, cur_est_A, linearization=linearization,
+                             report_time_splits=report_time_splits)
     if linearization:
         A_OT = estimate_A_exp(X_OT, dt)
         G_OT = estimate_GGT(X_OT, T, est_A=A_OT)
@@ -705,7 +841,234 @@ def estimate_A_exp_ot_with_traj(X, dt, T=1, cur_est_A=None, cur_est_D=None, line
         # print('bibbona: this should not be happening')
         A_OT = estimate_A_exact(X_OT, dt)
         G_OT = estimate_GGT_exact(X_OT, T, est_A=A_OT)
-    return A_OT, G_OT, X_OT
+
+    # A_OT, G_OT = estimate_A_GGT_ot_with_K(X, cur_est_D, dt, cur_est_A, linearization=linearization,
+    #                                       report_time_splits=report_time_splits)
+    return A_OT, G_OT
+
+
+'''
+craparino below
+'''
+
+
+# def estimate_A_GGT_ot_with_K(X, D, dt, cur_est_A=None, linearization=True, report_time_splits=False):
+#     """
+#     Estimate the drift matrix A and diffusion matrix GGT using optimal transport
+#     between successive marginal distributions, utilizing the kernel matrix K and
+#     multidimensional Sinkhorn algorithm without explicit trajectory creation.
+#     Compute the optimal transport plan p once per time step and use it for both
+#     A and GGT estimation. Report time splits if required.
+#     """
+#     import time
+#
+#     marginal_samples = extract_marginal_samples(X)
+#     num_time_steps = len(marginal_samples)
+#     d = marginal_samples[0].shape[1]
+#     if D is None:
+#         D = np.eye(d)
+#     num_trajectories = marginal_samples[0].shape[0]
+#     epsilon = 1e-8
+#
+#     # Initialize time measurements
+#     K_time = 0
+#     sinkhorn_time = 0
+#
+#     sum_Edxt_xtT = np.zeros((d, d))
+#     sum_Ext_xtT = np.zeros((d, d))
+#     ps = []
+#
+#     total_time = (num_time_steps -1 ) * dt
+#
+#     for t in range(num_time_steps - 1):
+#         X_t = marginal_samples[t]
+#         X_t1 = marginal_samples[t + 1]
+#         a = np.ones(len(X_t)) / len(X_t)
+#         b = np.ones(len(X_t1)) / len(X_t1)
+#
+#         # Use initial or zero matrix for A
+#         if cur_est_A is None:
+#             cur_est_A = np.zeros((d, d))
+#
+#         # Regularize D
+#         D_reg = D + np.eye(D.shape[0]) * epsilon
+#         cov_D_dt = D_reg * dt
+#
+#         # Compute A_dt and A_X_t consistent with create_OT_traj_md
+#         if linearization:
+#             A_dt = cur_est_A * dt
+#             A_X_t = np.matmul(A_dt, X_t.T)  # Shape: (d, num_trajectories)
+#         else:
+#             A_dt = expm(cur_est_A * dt)
+#             A_X_t = np.matmul(A_dt, X_t.T) - X_t.T
+#
+#         # Compute residuals: D_diff = X_t1[j] - X_t[i] - A_X_t[:, i].T
+#         D_diff = X_t1[None, :, :] - X_t[:, None, :] - A_X_t.T[:, None, :]
+#
+#         # Compute the kernel matrix K
+#         t1 = time.time()
+#         K = np.zeros((num_trajectories, num_trajectories))
+#         for i in range(num_trajectories):
+#             dX_ij_flattened = D_diff[i, :, :]  # Shape (num_trajectories, d)
+#             try:
+#                 K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
+#             except np.linalg.LinAlgError:
+#                 cov_D_dt += np.eye(D.shape[0]) * epsilon
+#                 K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
+#         t2 = time.time()
+#         K_time += t2 - t1
+#
+#         # Compute the optimal transport plan p
+#         t1 = time.time()
+#         p = sinkhorn_multidimensional(a=a, b=b, K=K)
+#         ps.append(p)
+#         t2 = time.time()
+#         sinkhorn_time += t2 - t1
+#
+#         # Estimate A
+#         term1 = np.zeros((d, d))
+#         for i in range(num_trajectories):
+#             for j in range(num_trajectories):
+#                 term1 += p[i, j] * (X_t1[j] - X_t[i]) * X_t[i]
+#         term2 = np.dot(X_t.T, X_t) / num_trajectories
+#         sum_Edxt_xtT += term1
+#         sum_Ext_xtT += term2
+#
+#     # Solve for A
+#     est_A = 1/dt * sum_Edxt_xtT * np.linalg.pinv(sum_Ext_xtT)  #np.linalg.solve(sum_Ext_xtT, sum_Edxt_xtT * (1 / dt))
+#
+#     # Estimate H
+#     sum_H = np.zeros((d, d))
+#     for t in range(num_time_steps-1):
+#         p = ps[t]
+#         X_t = marginal_samples[t]
+#         X_t1 = marginal_samples[t + 1]
+#         for i in range(num_trajectories):
+#             for j in range(num_trajectories):
+#                 sum_H += p[i, j] * np.outer((X_t1[j] - X_t[i] - np.matmul(est_A, X_t[i])),
+#                                             (X_t1[j] - X_t[i] - np.matmul(est_A, X_t[i])))
+#
+#     # Compute GGT without dividing by num_trajectories
+#     est_GGT = sum_H / total_time
+#
+#     if report_time_splits:
+#         print('Time setting up K:', K_time)
+#         print('Time doing Sinkhorn:', sinkhorn_time)
+#
+#     return est_A, est_GGT
+
+
+def estimate_A_GGT_ot_with_K(X, D, dt, cur_est_A=None, linearization=True, report_time_splits=False):
+    """
+    Estimate the drift matrix A and diffusion matrix GGT using optimal transport
+    between successive marginal distributions, utilizing the kernel matrix K and
+    multidimensional Sinkhorn algorithm without explicit trajectory creation.
+    Compute the optimal transport plan p once per time step and use it for both
+    A and GGT estimation. Report time splits if required.
+    """
+    import time
+
+    marginal_samples = extract_marginal_samples(X)
+    num_time_steps = len(marginal_samples)
+    # print(num_time_steps)
+    d = marginal_samples[0].shape[1]
+    if D is None:
+        D = np.eye(d)
+    num_trajectories = marginal_samples[0].shape[0]
+    epsilon = 1e-8
+
+    # Initialize time measurements
+    K_time = 0
+    sinkhorn_time = 0
+
+    sum_Edxt_xtT = np.zeros((d, d))
+    sum_Ext_xtT = np.zeros((d, d))
+    sum_H = np.zeros((d, d))
+    ps = []
+    total_time = (num_time_steps - 1) * dt
+
+    for t in range(num_time_steps - 1):
+        X_t = marginal_samples[t]
+        X_t1 = marginal_samples[t + 1]
+        a = np.ones(len(X_t)) / len(X_t)
+        b = np.ones(len(X_t1)) / len(X_t1)
+
+        # Use initial or zero matrix for A
+        if cur_est_A is None:
+            cur_est_A = np.zeros((d, d))
+
+        # Regularize D
+        D_reg = D + np.eye(D.shape[0]) * epsilon
+        cov_D_dt = D_reg * dt
+
+        # Compute A_dt and A_X_t consistent with create_OT_traj_md
+        if linearization:
+            A_dt = cur_est_A * dt
+            A_X_t = np.matmul(A_dt, X_t.T)  # Shape: (d, num_trajectories)
+        else:
+            A_dt = expm(cur_est_A * dt)
+            A_X_t = np.matmul(A_dt, X_t.T) - X_t.T
+
+        # Compute residuals: D_diff = X_t1[j] - X_t[i] - A_X_t[:, i].T
+        D_diff = X_t1[None, :, :] - X_t[:, None, :] - A_X_t.T[:, None, :]
+
+        # Compute the kernel matrix K
+        t1 = time.time()
+        K = np.zeros((num_trajectories, num_trajectories))
+        for i in range(num_trajectories):
+            dX_ij_flattened = D_diff[i, :, :]  # Shape (num_trajectories, d)
+            try:
+                K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
+            except np.linalg.LinAlgError:
+                cov_D_dt += np.eye(D.shape[0]) * epsilon
+                K[i, :] = multivariate_normal.pdf(dX_ij_flattened, mean=np.zeros(d), cov=cov_D_dt)
+        t2 = time.time()
+        K_time += t2 - t1
+
+        # Compute the optimal transport plan p
+        t1 = time.time()
+        p = sinkhorn_multidimensional(a=a, b=b, K=K)
+        ps.append(p)
+        t2 = time.time()
+        sinkhorn_time += t2 - t1
+
+        # Estimate A
+        term1 = np.zeros((d, d))
+        for i in range(num_trajectories):
+            Xi = X_t[i]  # Shape (d,)
+            # Compute weighted sum over j
+            residuals_ij = D_diff[i, :, :]  # Shape (num_trajectories, d)
+            weighted_residual = np.dot(p[i, :], residuals_ij)  # Shape (d,)
+            term1 += np.outer(weighted_residual, Xi)
+        # term2 = sum_{i} X_t[i] X_t[i]^T / num_trajectories
+        term2 = np.dot(X_t.T, X_t) / num_trajectories
+
+        sum_Edxt_xtT += term1
+        sum_Ext_xtT += term2
+
+        # Estimate GGT
+        # H_term = sum_{i,j} p[i,j] * outer(residuals[i,j,:], residuals[i,j,:])
+
+    # Solve for A
+    est_A = np.linalg.solve(sum_Ext_xtT, sum_Edxt_xtT * (1 / dt))
+    A_dt = est_A * dt if linearization else expm(est_A * dt)
+
+    # Compute GGT without dividing by num_trajectories
+    for t in range(num_time_steps - 1):
+        p = ps[t]
+        X_t = marginal_samples[t]
+        X_t1 = marginal_samples[t + 1]
+        A_X_t = np.matmul(A_dt, X_t.T)
+        residuals = X_t1[None, :, :] - X_t[:, None, :] - A_X_t.T[:, None, :]
+        H_term = np.einsum('ij,ijk,ijl->kl', p, residuals, residuals)
+        sum_H += H_term
+    est_GGT = sum_H / total_time
+
+    if report_time_splits:
+        print('Time setting up K:', K_time)
+        print('Time doing Sinkhorn:', sinkhorn_time)
+
+    return est_A, est_GGT
 
 
 def save_with_unique_filename(filepath):
@@ -720,6 +1083,7 @@ def save_with_unique_filename(filepath):
         counter += 1
 
     return unique_filepath
+
 
 def compute_mae(estimated, ground_truth):
     """Compute Mean Absolute Percentage Error (MAE)"""
